@@ -5,6 +5,79 @@
 
 namespace hooking {
 
+	static std::atomic<bool> g_retain_trampolines{ false };
+
+	namespace {
+
+		// Every hook that has been created and not yet reset. Unload walks this instead of a hand-kept list,
+		// because a hook that is missing from a list is a hook left pointing into a freed module -- which is
+		// exactly how level_shutdown was missed.
+		struct registry
+		{
+			std::mutex lock{};
+			std::vector<jmp*> hooks{};
+			std::vector<void*> retained{};
+		};
+
+		registry& get_registry( )
+		{
+			static registry instance{};
+			return instance;
+		}
+
+		void track( jmp* hook )
+		{
+			auto& reg = get_registry( );
+			std::scoped_lock guard{ reg.lock };
+
+			if ( std::ranges::find( reg.hooks, hook ) == reg.hooks.end( ) )
+			{
+				reg.hooks.push_back( hook );
+			}
+		}
+
+		void untrack( jmp* hook )
+		{
+			auto& reg = get_registry( );
+			std::scoped_lock guard{ reg.lock };
+			std::erase( reg.hooks, hook );
+		}
+
+	} // namespace
+
+	void manager::retain_trampolines( bool retain )
+	{
+		g_retain_trampolines.store( retain, std::memory_order_release );
+	}
+
+	void manager::reset_all( )
+	{
+		// Copied out first: reset( ) untracks the hook, which takes the same lock.
+		std::vector<jmp*> snapshot{};
+		{
+			auto& reg = get_registry( );
+			std::scoped_lock guard{ reg.lock };
+			snapshot = reg.hooks;
+		}
+
+		for ( auto* hook : snapshot )
+		{
+			hook->reset( );
+		}
+	}
+
+	void manager::release_retained( )
+	{
+		auto& reg = get_registry( );
+		std::scoped_lock guard{ reg.lock };
+
+		for ( auto* trampoline : reg.retained )
+		{
+			allocator::free( trampoline );
+		}
+
+		reg.retained.clear( );
+	}
 	namespace detail {
 
 		constexpr auto min_hook_size{ 14ull };
@@ -244,6 +317,7 @@ namespace hooking {
 		this->m_patch_size = patch_size;
 		this->m_enabled = false;
 
+		track( this );
 		return true;
 	}
 
@@ -313,10 +387,20 @@ namespace hooking {
 		}
 
 		this->disable( );
+		untrack( this );
 
 		if ( this->m_trampoline )
 		{
-			allocator::free( this->m_trampoline );
+			if ( g_retain_trampolines.load( std::memory_order_acquire ) )
+			{
+				auto& reg = get_registry( );
+				std::scoped_lock guard{ reg.lock };
+				reg.retained.push_back( this->m_trampoline );
+			}
+			else
+			{
+				allocator::free( this->m_trampoline );
+			}
 		}
 
 		this->m_target = nullptr;

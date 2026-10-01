@@ -315,7 +315,9 @@ namespace features::changer {
 			memory::call<void>( PATTERN( patterns::weapon_set_mesh_group_mask ), weapon_scene_node, mesh_group );
 		}
 
-		memory::call<void>( PATTERN( patterns::weapon_update_composite_material ), weapon + 0x608, true );
+		// The composite material block inside the weapon. The game passes entity + 0x610 at every one of its own
+		// call sites; this was 0x608 before the Sep 25 2026 build, and a stale value walks a null array pointer.
+		memory::call<void>( PATTERN( patterns::weapon_update_composite_material ), weapon + 0x610, true );
 		memory::call_vfunc<void>( weapon, 10, 1 );
 		memory::call<void>( PATTERN( patterns::weapon_update_skin ), weapon, true );
 	}

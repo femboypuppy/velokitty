@@ -10,6 +10,12 @@ namespace features::combat {
 
 	void rage::on_create_move( systems::input::usercmd* cmd )
 	{
+		struct report_on_exit
+		{
+			rage* self;
+			~report_on_exit( ) { self->report_decision_diag( ); }
+		} const report{ this };
+
 		auto& ctx = g_shared.ctx( );
 		const auto local = systems::g_local.get( );
 		this->update_penetration_crosshair( local );
@@ -43,7 +49,7 @@ namespace features::combat {
 
 			if ( settings::g_combat.m_zeusbot.drop_after && !systems::g_local.is_in_deathmatch( ) )
 			{
-				memory::call<void>(PATTERN (patterns::engine_client_cmd), addresses::globals::source2engine_to_client, 0, "drop", 0x7ffef001 );
+				memory::call<void>(PATTERN (patterns::engine_client_cmd), addresses::globals::source2engine_to_client, 0, "drop", 0x7ffef001, std::numeric_limits<double>::quiet_NaN( ), 0ull );
 			}
 
 			return;
@@ -87,6 +93,7 @@ namespace features::combat {
 
 			if ( !g_shared.can_shoot( cmd, local.controller ) )
 			{
+				++this->m_diag.cant_shoot;
 				return;
 			}
 
@@ -239,7 +246,12 @@ namespace features::combat {
 		// reports the same shot twice.
 		cmd->buttons.value &= ~cstypes::command_buttons::in_attack;
 		cmd->buttons.value_scroll &= ~cstypes::command_buttons::in_attack;
-		cmd->csgo_user_cmd.set_attack1_start_history_index( -1 );
+		// The shot's input history entry is the one fire_gun fills with the aim angles, the no-spread roll and
+		// the stamped player/render ticks. -1 here told the server the attack started in none of them: it either
+		// dropped the shot or fired it from the base command angles, which carry no no-spread roll -- the
+		// "doesn't shoot" and "shoots into the air" the feature was known for.
+		const auto history_index = cmd->csgo_user_cmd.input_history_size( ) - 1;
+		cmd->csgo_user_cmd.set_attack1_start_history_index( history_index >= 0 ? history_index : -1 );
 
 		return true;
 	}
@@ -372,8 +384,11 @@ namespace features::combat {
 
 			auto records = g_shared.lc( ).get_valid_records( pawn );
 
+			this->m_scan_diag.candidates.fetch_add( 1, std::memory_order_relaxed );
+
 			if ( records.empty( ) )
 			{
+				this->m_scan_diag.extrapolated.fetch_add( 1, std::memory_order_relaxed );
 				auto extrap = g_shared.lc( ).extrapolate( pawn );
 				if ( !extrap.has_value( ) )
 				{
@@ -513,6 +528,7 @@ namespace features::combat {
 		};
 
 		auto candidates = this->gather_candidates( local );
+		++this->m_diag.frames;
 
 		{
 			std::lock_guard lock( m_debug_mtx );
@@ -521,6 +537,8 @@ namespace features::combat {
 
 		if ( candidates.empty( ) )
 		{
+			++this->m_diag.no_candidates;
+			this->m_first_target_tick = -1;
 			return;
 		}
 
@@ -562,11 +580,16 @@ namespace features::combat {
 
 		if ( config.no_spread.value )
 		{
-			shared_ctx.inaccuracy = g_shared.get_inaccuracy( false );
+			// shared_ctx.inaccuracy already holds the inaccuracy predicted for the tick this shot goes out on
+			// (build_context stored it after simulating the command). The spread solve has to use that value:
+			// re-reading the weapon here gave the state from before this tick's movement, which is a different
+			// number on every jump and landing tick, and a solve built on the wrong inaccuracy hands the
+			// server a completely different spread offset.
 			auto all_hits = scan_from_eye_candidates( {}, shared_ctx.inaccuracy );
 
 			if ( all_hits.empty( ) )
 			{
+				++this->m_diag.no_hit;
 				return;
 			}
 
@@ -575,8 +598,11 @@ namespace features::combat {
 
 			if ( !best.valid )
 			{
+				++this->m_diag.no_hit;
 				return;
 			}
+
+			++this->m_diag.targets;
 
 			// no_spread does not care about accuracy, but autostop is gated on this flag and
 			// the player still expects the brake to engage on a target. Without it this path
@@ -590,6 +616,12 @@ namespace features::combat {
 
 			const auto subtick_attack = subtick_shot_possible( );
 			this->fire_gun( cmd, best, false, best.hit.source_eye.position, local, subtick_attack );
+
+			if ( this->m_firing_this_tick )
+			{
+				++this->m_diag.fired;
+			}
+
 			return;
 		}
 
@@ -610,7 +642,10 @@ namespace features::combat {
 			? ( duckpeek_active ? this->evaluate_hitchance( best.hit, ctx, standing_inaccuracy ) : best.hitchance )
 			: 0.0f;
 
-		const auto accurate = best.valid && standing_hc >= needed_hc;
+		// Jump scout: in the air the shot waits for the top of the jump, where the scout is most accurate, while
+		// auto stop takes the horizontal speed out. With no spread there is nothing to wait for.
+		const auto apex_hold = g_misc.jumpscout( ).active_this_tick( ) && !g_misc.jumpscout( ).apex_ready( );
+		const auto accurate = best.valid && standing_hc >= needed_hc && !apex_hold;
 
 		// force-shot used to also demand is_max_accuracy, which only reports true once the
 		// weapon's inaccuracy has decayed all the way to its floor. Mid-spray, in the air, or
@@ -623,6 +658,28 @@ namespace features::combat {
 		const auto force_bind = ctx.on_ground ? config.force_shot.value : config.force_shot_air.value;
 		const auto force = best.valid && force_bind && standing_hc >= k_force_min_hitchance;
 		const auto shot_viable = accurate || force;
+
+		if ( best.valid )
+		{
+			++this->m_diag.targets;
+			this->m_diag.hc_sum += standing_hc;
+
+			if ( this->m_first_target_tick < 0 )
+			{
+				this->m_first_target_tick = g_shared.ctx( ).current_tick;
+			}
+
+			if ( !shot_viable )
+			{
+				++this->m_diag.held_hitchance;
+				this->m_diag.hc_short_sum += needed_hc - standing_hc;
+			}
+		}
+		else
+		{
+			++this->m_diag.no_hit;
+			this->m_first_target_tick = -1;
+		}
 
 		// Autostop planning is independent from firing. Ground movement can use a
 		// predicted stopped eye; airborne stopping keeps the current target context.
@@ -640,6 +697,11 @@ namespace features::combat {
 			{
 				this->m_should_stop = best.valid;
 			}
+		}
+
+		if ( this->m_should_stop )
+		{
+			++this->m_diag.stop_frames;
 		}
 
 		if ( !best.valid )
@@ -672,10 +734,25 @@ namespace features::combat {
 			}
 		}
 
+		if ( shot_viable && !ready_to_fire )
+		{
+			++this->m_diag.held_duck;
+		}
+
 		if ( ready_to_fire && allow_fire )
 		{
 			const auto subtick_attack = subtick_shot_possible( );
 			this->fire_gun( cmd, best, !accurate && force, best.hit.source_eye.position, local, subtick_attack );
+
+			if ( this->m_firing_this_tick )
+			{
+				const auto waited = std::max( 0, g_shared.ctx( ).current_tick - this->m_first_target_tick );
+				++this->m_diag.fired;
+				++this->m_diag.latency_n;
+				this->m_diag.latency_sum += waited;
+				this->m_diag.latency_max = std::max( this->m_diag.latency_max, waited );
+				this->m_first_target_tick = -1;
+			}
 
 			if ( duckpeek_active )
 			{
@@ -924,6 +1001,7 @@ namespace features::combat {
 							record = &cand.resolver_poses.back( );
 						}
 
+						this->m_scan_diag.records.fetch_add( 1, std::memory_order_relaxed );
 						auto hits = this->scan_player( eye, inaccuracy, ctx, cand, record, local );
 
 						for ( auto& h : hits )
@@ -1154,8 +1232,11 @@ namespace features::combat {
 			const auto aim = math::helpers::calculate_angle( eye, tp.position );
 			const auto fov = math::helpers::angle_distance( ctx.view_angles, aim );
 
+			this->m_scan_diag.points.fetch_add( 1, std::memory_order_relaxed );
+
 			if ( fov > config.max_fov )
 			{
+				this->m_scan_diag.fov.fetch_add( 1, std::memory_order_relaxed );
 				continue;
 			}
 
@@ -1165,11 +1246,21 @@ namespace features::combat {
 			// came up empty -- the signature of a bullet deflected by the wall it went through.
 			if ( !g_shared.pen( ).run( eye, tp.position, pen_ctx, local.pawn, local.team, pen, tp.hitbox_index ) )
 			{
+				this->m_scan_diag.no_damage.fetch_add( 1, std::memory_order_relaxed );
 				continue;
+			}
+
+			{
+				const auto seen = static_cast< int >( pen.damage );
+				auto best = this->m_scan_diag.best_damage.load( std::memory_order_relaxed );
+				while ( seen > best && !this->m_scan_diag.best_damage.compare_exchange_weak( best, seen, std::memory_order_relaxed ) )
+				{
+				}
 			}
 
 			if ( pen.damage < cand.min_damage )
 			{
+				this->m_scan_diag.below_min.fetch_add( 1, std::memory_order_relaxed );
 				continue;
 			}
 
@@ -1177,9 +1268,12 @@ namespace features::combat {
 			{
 				if ( pen.hitgroup != systems::g_hitboxes.hitgroup_from_hitbox( tp.hitbox_index ) )
 				{
+					this->m_scan_diag.head_group.fetch_add( 1, std::memory_order_relaxed );
 					continue;
 				}
 			}
+
+			this->m_scan_diag.accepted.fetch_add( 1, std::memory_order_relaxed );
 
 			if ( tp.is_center && tp.hitbox_index >= 0 && tp.hitbox_index < static_cast< int >( center_sufficient.size( ) ) )
 			{
@@ -1371,6 +1465,14 @@ namespace features::combat {
 				score += static_cast< float >( hitgroup_priority( h.hitbox_index ) ) * 2.0f;
 				score -= h.fov * 0.1f;
 
+				// Shoot the enemy where they are now, not where they were. A backtrack record is a guess about the
+				// server's lag compensation and it shows as a shot at an empty spot; it is worth taking only when the
+				// newer records cannot deliver. 5000 per tick of age outweighs every damage, hitbox and centre term
+				// above, and stays under the 100000 kill bonus -- so an older record still wins when it is the only
+				// kill on offer, and when it is the only thing that can be hit at all.
+				const auto record_age = std::max( 0, g_shared.ctx( ).current_tick - h.record->tick );
+				score -= static_cast< float >( record_age ) * 5000.0f;
+
 				if ( config.prefer_safe_point.value && h.is_safe )
 				{
 					// Above the can_kill bonus (100000) on purpose: a guaranteed safe hit is worth
@@ -1442,6 +1544,40 @@ namespace features::combat {
 		}
 
 		return g_shared.calculate_hitchance( hit.source_eye.position, hit.aim_angle, hit.hitbox, hit.record->bones[ hit.bone_index ], inaccuracy, ctx.spread );
+	}
+
+	void rage::report_decision_diag( )
+	{
+		const auto now = GetTickCount64( );
+		if ( now - this->m_diag.last_report < 2500ull )
+		{
+			return;
+		}
+
+		this->m_diag.last_report = now;
+
+		const auto& d = this->m_diag;
+		if ( d.frames == 0 && d.cant_shoot == 0 )
+		{
+			return;
+		}
+
+		diag::writef(
+			diag::level::debug,
+			"rage: frames=%d cant_shoot=%d no_candidates=%d no_hit=%d targets=%d fired=%d | held: hitchance=%d (avg short by %.0f%%) duckpeek=%d | autostop_frames=%d | avg hc on target=%.0f%% | ticks target->shot: avg=%.1f max=%d n=%d | scan: candidates=%d extrapolated=%d records=%d points=%d fov=%d no_damage=%d below_min=%d head_group=%d ok=%d best_dmg=%d",
+			d.frames, d.cant_shoot, d.no_candidates, d.no_hit, d.targets, d.fired,
+			d.held_hitchance, d.held_hitchance ? d.hc_short_sum / static_cast< float >( d.held_hitchance ) * 100.0f : 0.0f,
+			d.held_duck, d.stop_frames,
+			d.targets ? d.hc_sum / static_cast< float >( d.targets ) * 100.0f : 0.0f,
+			d.latency_n ? static_cast< float >( d.latency_sum ) / static_cast< float >( d.latency_n ) : 0.0f,
+			d.latency_max, d.latency_n,
+			this->m_scan_diag.candidates.exchange( 0 ), this->m_scan_diag.extrapolated.exchange( 0 ), this->m_scan_diag.records.exchange( 0 ),
+			this->m_scan_diag.points.exchange( 0 ), this->m_scan_diag.fov.exchange( 0 ), this->m_scan_diag.no_damage.exchange( 0 ),
+			this->m_scan_diag.below_min.exchange( 0 ), this->m_scan_diag.head_group.exchange( 0 ), this->m_scan_diag.accepted.exchange( 0 ),
+			this->m_scan_diag.best_damage.exchange( 0 ) );
+
+		this->m_diag = decision_diag{};
+		this->m_diag.last_report = now;
 	}
 
 	float rage::get_standing_inaccuracy( const systems::local::snapshot& local, const aim_context& ctx ) const
@@ -1749,35 +1885,60 @@ namespace features::combat {
 		const auto tick_base = memory::read<int>( local.controller + SCHEMA( "CBasePlayerController", "m_nTickBase"_hash ) );
 		const auto& shared_ctx = g_shared.ctx( );
 		const auto& config = settings::g_combat.m_ragebot.get_group( shared_ctx.weapon_type );
-		const auto aim_punch = g_shared.get_aim_punch( local.pawn );
-		auto aim_angle = config.no_spread.value ? math::helpers::calculate_angle( shoot_eye, tgt.hit.position ) : tgt.hit.aim_angle;
 
+		// The time the shot is stamped with. It is written into every input history entry below, and it is the
+		// time the fire code evaluates the spread seed and the aim punch at.
+		auto stamp_tick = tick_base;
+		auto stamp_frac{ 0.0f };
+
+		if ( !tgt.hit.source_eye.is_uninterpolated )
+		{
+			auto tick_add = [ ]( int t, float f, int dt, float df )
+				{
+					f += df;
+					auto carry = static_cast< int >( std::floor( f ) );
+					f -= static_cast< float >( carry );
+					return std::pair{ t + dt + carry, f };
+				};
+
+			std::tie( stamp_tick, stamp_frac ) = tick_add( tgt.hit.source_eye.player_tick, tgt.hit.source_eye.player_frac, tgt.hit.source_eye.lerp_ticks_int, tgt.hit.source_eye.lerp_ticks_frac );
+		}
+
+		// The punch the fire code adds for this shot, evaluated at the shot's own time the way the fire code does
+		// it (0x80FD8F). The render-time punch the camera uses drifts from it while the recoil settles, and with no
+		// spread on that drift is enough to move the angles into another seed cell -- follow-up shots fired while
+		// the punch was still moving went wide.
+		const auto render_punch = g_shared.get_aim_punch( local.pawn );
+		auto aim_punch = g_shared.get_aim_punch_at( local.pawn, stamp_tick, stamp_frac );
+
+		// The two are the same recoil a fraction of a tick apart. If they disagree by degrees the shot-time call
+		// is not doing what it did when this was written (a game update moved it), and the render-time value is
+		// the safer of the two.
+		const auto punch_sane = std::isfinite( aim_punch.x ) && std::isfinite( aim_punch.y ) && std::isfinite( aim_punch.z ) &&
+			std::fabsf( aim_punch.x - render_punch.x ) < 3.0f && std::fabsf( aim_punch.y - render_punch.y ) < 3.0f;
+		if ( !punch_sane )
+		{
+			diag::writef( diag::level::warning, "shot-time punch (%.3f %.3f %.3f) disagrees with render punch (%.3f %.3f); using render punch", aim_punch.x, aim_punch.y, aim_punch.z, render_punch.x, render_punch.y );
+			aim_punch = render_punch;
+		}
+
+		// Where the bullet is meant to go. With no spread the angles sent differ from it on purpose, so this is
+		// what the impact logger has to measure a miss against.
+		const auto intended_angle = config.no_spread.value ? math::helpers::calculate_angle( shoot_eye, tgt.hit.position ) : tgt.hit.aim_angle;
+		auto aim_angle = intended_angle;
+
+		shared::spread_solution solution{};
 		if ( config.no_spread.value )
 		{
-			auto stamp_tick = tick_base;
-			auto stamp_frac{ 0.0f };
-
-			if ( !tgt.hit.source_eye.is_uninterpolated )
+			solution = g_shared.find_spread_correction( intended_angle, stamp_tick, aim_punch );
+			if ( !solution.valid )
 			{
-				auto tick_add = [ ]( int t, float f, int dt, float df )
-					{
-						f += df;
-						auto carry = static_cast< int >( std::floor( f ) );
-						f -= static_cast< float >( carry );
-						return std::pair{ t + dt + carry, f };
-					};
-
-				std::tie( stamp_tick, stamp_frac ) = tick_add( tgt.hit.source_eye.player_tick, tgt.hit.source_eye.player_frac, tgt.hit.source_eye.lerp_ticks_int, tgt.hit.source_eye.lerp_ticks_frac );
-			}
-
-			const auto corrected = g_shared.find_spread_correction( aim_angle, stamp_tick );
-			if ( corrected.x == 0.0f && corrected.y == 0.0f && corrected.z == 0.0f )
-			{
+				diag::writef( diag::level::info, "no spread: no solution after %d cells (inaccuracy %.4f spread %.4f)", solution.evaluated, shared_ctx.inaccuracy, shared_ctx.spread );
 				this->m_firing_this_tick = false;
 				return;
 			}
 
-			aim_angle = corrected;
+			aim_angle = solution.shot_angles;
 		}
 
 		// Point of no return. Every early return above leaves the command untouched, which is the
@@ -1809,7 +1970,7 @@ namespace features::combat {
 			);
 		}
 
-		features::misc::g_impacts.on_boom( tgt.hit.pawn, tgt.hit.hitgroup, tgt.hit.damage, tgt.hitchance, shared_ctx.inaccuracy, shared_ctx.spread, aim_angle, shoot_eye, tgt.hit.record->tick, g_shared.lc( ).get_skeleton( *tgt.hit.record ), was_forced );
+		features::misc::g_impacts.on_boom( tgt.hit.pawn, tgt.hit.hitgroup, tgt.hit.damage, tgt.hitchance, shared_ctx.inaccuracy, shared_ctx.spread, intended_angle, shoot_eye, tgt.hit.record->tick, g_shared.lc( ).get_skeleton( *tgt.hit.record ), was_forced );
 		features::esp::player::g_chams.os ().push (tgt.hit.pawn);
 		const auto record_time = cstypes::tick_fraction::from_value( tgt.hit.record->simulation_time / cstypes::tick_interval );
 		const auto history_size = cmd->csgo_user_cmd.input_history_size( );
@@ -1826,9 +1987,10 @@ namespace features::combat {
 				angles->set_x( aim_angle.x - aim_punch.x );
 				angles->set_y( aim_angle.y - aim_punch.y );
 
+				// The fire code adds the whole punch vector, roll included, before it builds the bullet frame.
 				if ( config.no_spread.value )
 				{
-					angles->set_z( aim_angle.z );
+					angles->set_z( aim_angle.z - aim_punch.z );
 				}
 			}
 
@@ -1837,16 +1999,6 @@ namespace features::combat {
 
 			if ( !tgt.hit.source_eye.is_uninterpolated )
 			{
-				auto tick_add = [ ]( int t, float f, int dt, float df )
-					{
-						f += df;
-						auto carry = static_cast< int >( std::floor( f ) );
-						f -= static_cast< float >( carry );
-						return std::pair{ t + dt + carry, f };
-					};
-
-				const auto [stamp_tick, stamp_frac] = tick_add( tgt.hit.source_eye.player_tick, tgt.hit.source_eye.player_frac, tgt.hit.source_eye.lerp_ticks_int, tgt.hit.source_eye.lerp_ticks_frac );
-
 				entry->set_player_tick_count( stamp_tick );
 				entry->set_player_tick_fraction( stamp_frac );
 			}
@@ -1914,6 +2066,29 @@ namespace features::combat {
 		{
 			systems::g_input.set_view_angles( punched_aim );
 		}
+
+		// Re-trace the exact point that was fired at, with contact logging on, so the log carries the surfaces
+		// behind this shot's predicted damage.
+		if ( tgt.hit.penetrated )
+		{
+			const auto dump_ctx = g_shared.pen( ).prepare_target( tgt.hit.pawn, tgt.hit.record );
+			shared::penetration::result dump{};
+			( void )g_shared.pen( ).run( shoot_eye, tgt.hit.position, dump_ctx, local.pawn, local.team, dump, tgt.hit.hitbox_index, true );
+		}
+
+		// Log-file detail for this shot, paired with the "shot detail" line the impact code writes on a miss.
+		// Everything that turns a scan result into the bytes the server reads is here: the aim angle, the
+		// punch taken off it, the angle the command actually carries, and the ticks stamped onto the input.
+		diag::writef(
+			diag::level::info,
+			"fire detail: no_spread=%d silent=%d subtick=%d forced=%d | eye=(%.1f %.1f %.1f) uninterp=%d player_tick=%d frac=%.3f lerp=%d+%.3f | aim=(%.2f %.2f %.2f) punch=(%.3f %.3f %.3f) render_punch=(%.3f %.3f) cmd=(%.2f %.2f) | tick_base=%d current=%d record_age=%d hp=%d | solver cells=%d margin=%.3f | pen=%d hitbox=%d dmg=%.0f",
+			config.no_spread.value ? 1 : 0, config.silent.value ? 1 : 0, subtick_attack ? 1 : 0, was_forced ? 1 : 0,
+			shoot_eye.x, shoot_eye.y, shoot_eye.z,
+			tgt.hit.source_eye.is_uninterpolated ? 1 : 0, tgt.hit.source_eye.player_tick, tgt.hit.source_eye.player_frac, tgt.hit.source_eye.lerp_ticks_int, tgt.hit.source_eye.lerp_ticks_frac,
+			aim_angle.x, aim_angle.y, aim_angle.z, aim_punch.x, aim_punch.y, aim_punch.z, render_punch.x, render_punch.y, command_aim.x, command_aim.y,
+			tick_base, shared_ctx.current_tick, shared_ctx.current_tick - tgt.hit.record->tick, tgt.hit.health,
+			solution.evaluated, solution.margin,
+			tgt.hit.penetrated ? 1 : 0, tgt.hit.hitbox_index, tgt.hit.damage );
 	}
 
 	void rage::fire_melee( systems::input::usercmd* cmd, const target& tgt, const systems::local::snapshot& local )
@@ -2184,7 +2359,8 @@ namespace features::combat {
 			return speed_2d * inaccuracy_move > inaccuracy_stand;
 		}
 
-		if ( shared_ctx.weapon_type != cstypes::weapon_type::sniper )
+		// Stopping in the air is jump scout's job, and only the scout is accurate enough up there for it to pay.
+		if ( !g_misc.jumpscout( ).active_this_tick( ) )
 		{
 			return false;
 		}

@@ -125,6 +125,20 @@ namespace systems {
 		return filter;
 	}
 
+	tracing::filter tracing::make_bullet_filter( std::uintptr_t skip_entity ) const
+	{
+		auto filter = this->make_filter( skip_entity, 0x1c300b, 3, 15 );
+
+		// After building this filter the fire code does `or qword [filter+0x10], 1 << 38` -- it stops the bullet
+		// interacting with collision layer 38 -- and `or byte [filter+0x39], 2`. Without the two, the scan's trace
+		// stopped on surfaces the real bullet passes through, and each one cost a penetration layer and damage:
+		// every wallbang came out 1.45-1.75x below the damage that actually landed.
+		filter.v1[ 0 ] |= static_cast< std::int64_t >( 0x4000000000ull );
+		filter.v6 |= 2;
+
+		return filter;
+	}
+
 	tracing::player_movement_filter tracing::make_player_movement_filter( std::uintptr_t entity, std::uintptr_t mask, std::uint8_t collision_group ) const
 	{
 		player_movement_filter filter{};
@@ -136,9 +150,19 @@ namespace systems {
 
 	tracing::result tracing::trace_player_bbox( const math::vector3& start, const math::vector3& end, const bbox_collision& bbox, const player_movement_filter& filter, std::uintptr_t movement_services ) const
 	{
+		// The game's own movement code does exactly this: a type-2 (box) ray handed to TraceShape together with the
+		// filter that trace_filter_set_collision built. The old path called a separate hull wrapper through
+		// movement_services + 1592, and its signature now resolves to a generic line trace with different arguments.
+		( void )movement_services;
+
+		ray ray{};
+		ray.mins = bbox.mins;
+		ray.maxs = bbox.maxs;
+		ray.type = 2;
+
 		result result{};
 
-		memory::call<void>(PATTERN (patterns::trace_hull), movement_services + 1592, &result, &start, &end, &bbox, &filter );
+		memory::call<bool>(PATTERN (patterns::trace_ray), addresses::globals::game_trace_manager, &ray, &start, &end, &filter, &result );
 
 		return result;
 	}

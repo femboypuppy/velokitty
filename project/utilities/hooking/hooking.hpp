@@ -68,6 +68,18 @@ namespace hooking {
 
 		bool create( const std::initializer_list<entry>& entries );
 
+		/// While set, jmp::reset restores the target's bytes but leaves the trampoline allocated. A thread
+		/// that was already inside a detour still has to return through it, and freeing the trampoline under
+		/// it is a crash; a few hundred leaked bytes per hook on unload is not.
+		void retain_trampolines( bool retain );
+
+		/// Resets every hook that is currently created, whether or not anyone kept a pointer to it.
+		void reset_all( );
+
+		/// Frees the trampolines that retain_trampolines kept alive. Only safe once nothing can still be
+		/// executing inside them.
+		void release_retained( );
+
 	} // namespace manager
 
 } // namespace hooking

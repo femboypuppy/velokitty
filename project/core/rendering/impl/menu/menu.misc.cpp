@@ -85,7 +85,7 @@ namespace rendering {
 			auto& mov = settings::g_movement;
 			auto& ab = m.m_autobuy;
 
-			if ( xui::begin_child( "##misc_impacts", col_w ) )
+			if ( xui::begin_child( "impacts##misc_impacts", col_w ) )
 			{
 				xui::checkbox( "hit logs", impacts.hit_log );
 				if ( xui::begin_popup( "##hitlog_popup", 220.0f ) )
@@ -207,7 +207,7 @@ namespace rendering {
 				xui::end_child( );
 			}
 
-			if ( xui::begin_child( "##misc_visuals", col_w ) )
+			if ( xui::begin_child( "visuals##misc_visuals", col_w ) )
 			{
 				xui::checkbox( "projectile trajectory", traj.enabled );
 				if ( xui::begin_popup( "##traj_popup", 220.0f ) )
@@ -246,7 +246,7 @@ namespace rendering {
 
 			page.right( );
 
-			if ( xui::begin_child( "##misc_movement", col_w ) )
+			if ( xui::begin_child( "movement##misc_movement", col_w ) )
 			{
 				xui::checkbox( "bhop", mov.bhop );
 				xui::checkbox( "airstrafe", mov.airstrafe );
@@ -257,7 +257,7 @@ namespace rendering {
 					xui::end_popup( );
 				}
 
-				xui::checkbox( "test strafer", mov.m_test_strafer.enabled );
+				xui::checkbox( "auto strafe", mov.m_test_strafer.enabled );
 
 				// The quantized maths is meaningless when the server is not quantizing, so the
 				// feature no-ops there — most local listen servers have it off. Say so instead of
@@ -288,26 +288,11 @@ namespace rendering {
 					xui::end_popup( );
 				}
 
-				xui::checkbox( "autostop", settings::g_combat.m_autostop.enabled );
-				if ( xui::begin_popup( "##autostop_popup", 220.0f ) )
-				{
-					xui::checkbox( "aggressive stop##as", settings::g_combat.m_autostop.aggressive );
-					xui::end_popup( );
-				}
-
-				xui::checkbox( "jump scout", settings::g_combat.m_jumpscout.enabled );
-				if ( xui::begin_popup( "##jumpscout_popup", 240.0f ) )
-				{
-					static const char* jumpscout_modes[] = { "on attack", "always" };
-					xui::combo( "mode##js", settings::g_combat.m_jumpscout.mode.value, jumpscout_modes, 2 );
-					xui::slider_float( "threshold##js", settings::g_combat.m_jumpscout.threshold, 0.05f, 1.0f, "%.2f" );
-					xui::end_popup( );
-				}
 
 				xui::end_child( );
 			}
 
-			if ( xui::begin_child( "##misc_other", col_w ) )
+			if ( xui::begin_child( "other##misc_other", col_w ) )
 			{
 				xui::checkbox( "reveal radar", m.reveal_radar );
 				xui::checkbox( "preserve killfeed", m.preserve_killfeed );
@@ -370,7 +355,7 @@ namespace rendering {
 		{
 			auto& rem = m.m_removals;
 
-			if ( xui::begin_child( "##misc_removals", col_w ) )
+			if ( xui::begin_child( "removals##misc_removals", col_w ) )
 			{
 				xui::checkbox( "remove crosshair", rem.crosshair );
 				xui::checkbox( "remove scope", rem.scope );
@@ -392,7 +377,7 @@ namespace rendering {
 			auto& cam = m.m_camera;
 			auto& vm = m.m_viewmodel_adjust;
 
-			if ( xui::begin_child( "##misc_camera", col_w ) )
+			if ( xui::begin_child( "camera##misc_camera", col_w ) )
 			{
 				xui::checkbox( "custom fov", cam.change_fov );
 				if ( xui::begin_popup( "##fov_popup", 220.0f ) )
@@ -423,7 +408,7 @@ namespace rendering {
 
 			page.right( );
 
-			if ( xui::begin_child( "##misc_viewmodel", col_w ) )
+			if ( xui::begin_child( "viewmodel##misc_viewmodel", col_w ) )
 			{
 				xui::checkbox( "viewmodel adjust", vm.enabled );
 				if ( xui::begin_popup( "##vm_popup", 220.0f ) )
@@ -443,7 +428,7 @@ namespace rendering {
 		{
 			auto& hud = m.m_hud;
 
-			if ( xui::begin_child( "##misc_hud", col_w ) )
+			if ( xui::begin_child( "hud##misc_hud", col_w ) )
 			{
 				xui::checkbox( "crosshair overlay", hud.m_crosshair.enabled );
 				if ( xui::begin_popup( "##xhair_popup", 220.0f ) )
@@ -488,7 +473,7 @@ namespace rendering {
 
 			page.right( );
 
-			if ( xui::begin_child( "##misc_hud_hat", col_w ) )
+			if ( xui::begin_child( "hat##misc_hud_hat", col_w ) )
 			{
 				xui::checkbox( "hat", hud.m_hat.enabled );
 				if ( xui::begin_popup( "##hat_popup", 220.0f ) )

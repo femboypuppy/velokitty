@@ -327,23 +327,19 @@ namespace settings {
 
 		struct autostop
 		{
-			/// When enabled, the manual autostop key always counter-strafes (independent of rage).
-			xui::setting enabled{ false, { 'X', xui::bind_mode::hold_on }, "autostop", "movement" };
+			/// Brake the moment the ragebot has a target. No default key: it is meant to be on, not held. The
+			/// config key keeps its old "movement" category so saved configs still load it.
+			xui::setting enabled{ false, {}, "autostop", "movement" };
 			/// Counter-strafe at full analog deflection instead of scaling it with the remaining speed.
 			xui::setting aggressive{ false, {}, "aggressive stop", "autostop" };
 		} m_autostop{};
 
 		struct jumpscout
 		{
-			enum class scout_mode : std::uint8_t
-			{
-				on_attack,
-				always
-			};
-
-			xui::setting enabled{ false, { 'J', xui::bind_mode::hold_on }, "jump scout", "movement" };
-			config::enm<scout_mode> mode{ scout_mode::on_attack, "jump scout", "mode" };
-			/// Weapon-inaccuracy threshold at which a jump-scout shot is fired (0.85 = SSG's apex accuracy).
+			/// Ragebot jump scout: in the air with the SSG-08, brake the horizontal speed and hold a hit-chance shot
+			/// until the top of the jump. You do the jumping.
+			xui::setting enabled{ false, {}, "jump scout", "movement" };
+			/// How close to the apex the shot waits for: 1 = the apex itself, 0.85 = the last 15% of the way there.
 			config::val<float> threshold{ 0.85f, "jump scout", "inaccuracy threshold" };
 		} m_jumpscout{};
 
@@ -1677,6 +1673,10 @@ namespace settings {
 		/// The backdrop blur resolves the frame into a scratch target once per window, which is the most
 		/// expensive thing the menu draws. Off trades the frosted look for an opaque plate.
 		xui::setting window_blur{ true, {}, "background blur", "gui" };
+
+		/// The legacy menu skin: square, bevelled, black-outlined widgets in the classic small font, a layered
+		/// window frame and a tab column down the left. Off falls back to the rounded glass look.
+		xui::setting legacy_skin{ true, {}, "legacy skin", "gui" };
 	};
 
 	inline combat g_combat{};

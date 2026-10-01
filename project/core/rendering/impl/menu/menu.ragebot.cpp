@@ -32,7 +32,7 @@ namespace rendering {
 		const page_scroll page{ *this, "##ragebot_page" };
 		const auto col_w = page.col_w( );
 
-		if ( xui::begin_child( "##ragebot_aimbot", col_w ) )
+		if ( xui::begin_child( "aimbot##ragebot_aimbot", col_w ) )
 		{
 			xui::checkbox( "enabled", rb.enabled );
 			xui::checkbox( "silent", wg.silent );
@@ -47,7 +47,7 @@ namespace rendering {
 			// From 1, not 5: the default is 1 and a slider whose floor sits above the default
 			// cannot represent it.
 			xui::slider_int( "min damage", wg.min_damage, 1, 125, "%d" );
-			xui::slider_int( "penetration layers", wg.penetration_layers, 1, 8, "%d" );
+			xui::slider_int( "penetration layers", wg.penetration_layers, 1, 4, "%d" );
 			xui::slider_int( "backtrack records", wg.backtrack_records, 1, 16, "%d" );
 			/*xui::slider_int( "max backtrack", s.m_lagcomp.max_backtrack_ticks, 1, 16, "%d tick(s)" );*/
 
@@ -70,7 +70,7 @@ namespace rendering {
 
 		// Auto-height now, not a hardcoded 190 with its own scrollbar: the page scrolls, so a card that
 		// grows a row should push the column down instead of hiding the row behind a nested wheel.
-		if ( xui::begin_child( "##ragebot_extras", col_w ) )
+		if ( xui::begin_child( "accuracy##ragebot_extras", col_w ) )
 		{
 			xui::checkbox( "force b-aim", wg.body_aim );
 			xui::checkbox( "dynamic point scale", wg.dynamic_pointscale );
@@ -84,6 +84,20 @@ namespace rendering {
 			xui::checkbox( "prefer safe point", wg.prefer_safe_point );
 			xui::checkbox( "force safe point", wg.force_safe_point );
 			xui::checkbox( "baim lethal", wg.baim_lethal );
+
+			xui::checkbox( "auto stop", settings::g_combat.m_autostop.enabled );
+			if ( xui::begin_popup( "##autostop_popup", 220.0f ) )
+			{
+				xui::checkbox( "aggressive stop##as", settings::g_combat.m_autostop.aggressive );
+				xui::end_popup( );
+			}
+
+			xui::checkbox( "jump scout", settings::g_combat.m_jumpscout.enabled );
+			if ( xui::begin_popup( "##jumpscout_popup", 240.0f ) )
+			{
+				xui::slider_float( "apex strictness##js", settings::g_combat.m_jumpscout.threshold, 0.05f, 1.0f, "%.2f" );
+				xui::end_popup( );
+			}
 			xui::slider_float( "point scale", wg.pointscale, 0.0f, 100.0f, "%.0f%%" );
 			xui::multicombo( "hitboxes", wg.hitboxes, detail::hitbox_names, 6 );
 
@@ -92,7 +106,7 @@ namespace rendering {
 
 		page.right( );
 
-		if ( xui::begin_child( "##ragebot_antiaim", col_w ) )
+		if ( xui::begin_child( "anti-aim##ragebot_antiaim", col_w ) )
 		{
 			xui::checkbox( "anti aim", aa.enabled );
 
@@ -147,7 +161,7 @@ namespace rendering {
 			xui::end_child( );
 		}
 
-		if ( xui::begin_child( "##ragebot_otherbots", col_w ) )
+		if ( xui::begin_child( "other##ragebot_otherbots", col_w ) )
 		{
 			xui::checkbox( "auto revolver", autos.revolver );
 
@@ -169,7 +183,7 @@ namespace rendering {
 			xui::end_child( );
 		}
 
-		if ( xui::begin_child( "##ragebot_peek", col_w ) )
+		if ( xui::begin_child( "peek##ragebot_peek", col_w ) )
 		{
 			xui::checkbox( "quick peek", qp.enabled );
 			if ( xui::begin_popup( "##qp_colors", 220.0f ) )

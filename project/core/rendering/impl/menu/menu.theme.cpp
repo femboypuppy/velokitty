@@ -85,7 +85,7 @@ namespace rendering {
 
 		if ( subtab == 0 )
 		{
-			if ( xui::begin_child( "##theme_presets", col_w ) )
+			if ( xui::begin_child( "presets##theme_presets", col_w ) )
 			{
 				const auto inner_w = xui::layout::avail( ).first;
 				const auto interactive = !xui::ctx( ).overlay_blocking( );
@@ -172,7 +172,7 @@ namespace rendering {
 
 			page.right( );
 
-			if ( xui::begin_child( "##theme_palette", col_w ) )
+			if ( xui::begin_child( "palette##theme_palette", col_w ) )
 			{
 				xui::text( "palette", tokens::col_text_dim );
 
@@ -196,7 +196,7 @@ namespace rendering {
 		}
 		else if ( subtab == 1 )
 		{
-			if ( xui::begin_child( "##theme_menu", col_w ) )
+			if ( xui::begin_child( "menu##theme_menu", col_w ) )
 			{
 				xui::text( "menu", tokens::col_text_dim );
 
@@ -223,7 +223,7 @@ namespace rendering {
 
 			page.right( );
 
-			if ( xui::begin_child( "##theme_widget_preview", col_w ) )
+			if ( xui::begin_child( "preview##theme_widget_preview", col_w ) )
 			{
 				xui::text( "live preview", tokens::col_text_dim );
 
@@ -273,7 +273,7 @@ namespace rendering {
 		}
 		else if ( subtab == 2 )
 		{
-			if ( xui::begin_child( "##theme_layout", col_w ) )
+			if ( xui::begin_child( "layout##theme_layout", col_w ) )
 			{
 				xui::text( "window", tokens::col_text_dim );
 
@@ -301,7 +301,7 @@ namespace rendering {
 
 			page.right( );
 
-			if ( xui::begin_child( "##theme_chrome", col_w ) )
+			if ( xui::begin_child( "chrome##theme_chrome", col_w ) )
 			{
 				xui::text( "chrome", tokens::col_text_dim );
 
@@ -309,6 +309,7 @@ namespace rendering {
 
 				xui::slider_float( "border", gui.border, 0.0f, 3.0f, "%.1fpx" );
 				xui::color_picker( "border color", gui.border_color );
+				xui::checkbox( "legacy skin", gui.legacy_skin );
 				xui::checkbox( "background blur", gui.window_blur );
 
 				if ( !gui.window_blur.value )

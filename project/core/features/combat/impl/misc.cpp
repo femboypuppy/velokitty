@@ -2,6 +2,7 @@
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <utilities/logging/logging.hpp>
+#include <utilities/diag.hpp>
 #include <core/systems/systems.hpp>
 #include <core/features/features.hpp>
 #include <protection/game_addresses.hpp>
@@ -28,6 +29,43 @@ namespace features::combat {
 			return math::vector2{ forward / overflow, left / overflow };
 		}
 
+			/// Make the command's direction keys agree with the movement the correction is about to ship.
+			///
+			/// The game only applies its analog forward value when IN_FORWARD or IN_BACK is in the command's
+			/// button mask, and only applies its analog left value when IN_MOVELEFT or IN_MOVERIGHT is (the
+			/// movement setup tests the mask against 0x18 and 0x600 before it reads m_flCmdForwardMove and
+			/// m_flCmdLeftMove). The correction rotates the pair, so a player holding only W ends up with a
+			/// left component and no left key: the game threw that component away and the character moved
+			/// along the model's forward/back axis instead of where the camera pointed. Positive left is
+			/// IN_MOVELEFT when `left_key_sign` is +1 and IN_MOVERIGHT when it is -1.
+			void sync_movement_buttons( systems::input::usercmd* cmd, const math::vector2& wish, float left_key_sign )
+			{
+				constexpr auto k_axis_threshold{ 0.01f };
+				constexpr auto direction_mask = static_cast< std::uintptr_t >( cstypes::command_buttons::in_forward | cstypes::command_buttons::in_back | cstypes::command_buttons::in_moveleft | cstypes::command_buttons::in_moveright );
+
+				auto buttons = cmd->buttons.value & ~direction_mask;
+
+				if ( wish.x > k_axis_threshold )
+				{
+					buttons |= cstypes::command_buttons::in_forward;
+				}
+				else if ( wish.x < -k_axis_threshold )
+				{
+					buttons |= cstypes::command_buttons::in_back;
+				}
+
+				const auto left_component = wish.y * left_key_sign;
+					if ( left_component > k_axis_threshold )
+				{
+					buttons |= cstypes::command_buttons::in_moveleft;
+				}
+				else if ( left_component < -k_axis_threshold )
+				{
+					buttons |= cstypes::command_buttons::in_moveright;
+				}
+
+				cmd->buttons.value = buttons;
+			}
 		/// The command tick, read the same way `get_mode_offset` reads it. Used to tell "the first
 		/// CreateMove of this tick" from "the fourth", which the correction has to know: it is a
 		/// per-frame callback applying a per-tick rotation.
@@ -68,6 +106,25 @@ namespace features::combat {
 		this->m_basis_yaw = std::isfinite( camera_yaw ) ? camera_yaw
 			: ( basis_angles ? basis_angles->y( ) : this->m_basis_yaw );
 		this->m_should_correct = true;
+
+		// Learn which sign the game gives leftmove when A is held. This has to see the command as the game
+		// built it, so it runs before any feature and never on a tick we already rotated (a repeat call can
+		// hand back our own output, which would only confirm whatever we already assumed).
+		if ( !this->m_left_sign_learned && basis_base && current_command_tick( ) != this->m_corrected_tick )
+		{
+			constexpr auto left_bit = static_cast< std::uintptr_t >( cstypes::command_buttons::in_moveleft );
+			constexpr auto right_bit = static_cast< std::uintptr_t >( cstypes::command_buttons::in_moveright );
+			const auto held = cmd->buttons.value & ( left_bit | right_bit );
+			const auto raw_left = basis_base->leftmove( );
+
+			if ( ( held == left_bit || held == right_bit ) && std::fabsf( raw_left ) > 0.5f )
+			{
+				const auto value_for_left_key = ( held == left_bit ) ? raw_left : -raw_left;
+				this->m_left_key_sign = value_for_left_key > 0.0f ? 1.0f : -1.0f;
+				this->m_left_sign_learned = true;
+				diag::writef( diag::level::info, "antiaim: learned leftmove sign; IN_MOVELEFT => leftmove %+.0f (buttons=0x%llX leftmove=%.2f)", this->m_left_key_sign, static_cast< unsigned long long >( cmd->buttons.value ), raw_left );
+			}
+		}
 
 		if ( !settings::g_combat.m_antiaim.enabled.value )
 		{
@@ -136,6 +193,22 @@ namespace features::combat {
 		base->mutable_viewangles( )->set_z( this->m_modified_angles.z );
 	}
 
+	void misc::antiaim::log_debug( ) const
+	{
+		diag::writef(
+			diag::level::debug,
+			"antiaim correction: state=%d calls/tick=%d camera_yaw=%.2f sent_yaw=%.2f delta=%.2f in=%.2f/%.2f out=%.2f/%.2f subticks=%d left_key_sign=%+.0f learned=%d",
+			static_cast<int>( this->m_dbg_state ),
+			this->m_dbg_calls,
+			this->m_dbg_camera_yaw,
+			this->m_dbg_sent_yaw,
+			this->m_dbg_delta,
+			this->m_dbg_in.x, this->m_dbg_in.y,
+			this->m_dbg_out.x, this->m_dbg_out.y,
+			this->m_dbg_steps,
+			this->m_left_key_sign,
+			this->m_left_sign_learned ? 1 : 0 );
+	}
 	void misc::antiaim::on_render( xdraw::draw_list& draw_list ) const
 	{
 		// Drawn before the indicator's guards and independently of them: the whole point of the readout
@@ -553,7 +626,7 @@ namespace features::combat {
 		return this->m_basis_yaw;
 	}
 
-	void misc::antiaim::rotate_subtick_moves( proto::base_usercmd_pb* base, const math::vector2& start, float sin_delta, float cos_delta ) const
+	math::vector2 misc::antiaim::rotate_subtick_moves( proto::base_usercmd_pb* base, const math::vector2& start, float sin_delta, float cos_delta ) const
 	{
 		// The engine treats each step as an increment on a running total, so the deltas cannot be
 		// rotated where they sit: R(a - b) is not (R(a) - b), and the total the server starts from
@@ -603,6 +676,8 @@ namespace features::combat {
 			rotated.x = target_x;
 			rotated.y = target_y;
 		}
+
+		return rotated;
 	}
 
 	void misc::antiaim::apply_movement_correction( systems::input::usercmd* cmd )
@@ -696,7 +771,10 @@ namespace features::combat {
 		}
 
 		const auto delta_rad = delta * ( std::numbers::pi_v<float> / 180.0f );
-		const auto sin_delta = std::sinf( delta_rad );
+		// The formulas below are written for positive leftmove = left. When the game's A key is negative the
+		// sine terms change sign, which is the difference between following the camera and mirroring A/D
+		// around the fake yaw.
+		const auto sin_delta = std::sinf( delta_rad ) * this->m_left_key_sign;
 		const auto cos_delta = std::cosf( delta_rad );
 
 		// The server builds the wish direction as
@@ -730,11 +808,15 @@ namespace features::combat {
 		// top of every CreateMove, so whatever is here was rebuilt by the features this frame.
 		const auto& impulses = systems::g_prediction.pre( ).last_movement_impulses;
 		this->m_dbg_steps = base->subtick_moves_size( );
-		this->rotate_subtick_moves( base, math::vector2{ impulses.x, impulses.y }, sin_delta, cos_delta );
+		const auto rotated_total = this->rotate_subtick_moves( base, math::vector2{ impulses.x, impulses.y }, sin_delta, cos_delta );
 
-		// Deliberately no button rewriting. The server derives movement from the analog fields,
-		// and downstream features (airstrafe, test_strafer) read cmd->buttons for the player's
-		// real intent — the old code inverted the sign convention there and steered them wrong.
+		// What the server will actually end up with: the chain's total when a step carries the wish direction,
+		// otherwise the rotated pair, which input::apply turns into a fallback step.
+		sync_movement_buttons( cmd, systems::g_input.has_move_subticks( base ) ? rotated_total : scaled, this->m_left_key_sign );
+
+		// The buttons are rewritten last, by sync_movement_buttons above, and only once every feature that reads
+		// them for the player's real intent (airstrafe, test_strafer) has already run -- the correction is the
+		// final stage of the pipeline. Without it the game drops any rotated component that has no key behind it.
 	}
 
 
@@ -1120,48 +1202,92 @@ namespace features::combat {
 		this->m_prev_movement_bits = 0;
 	}
 
-	bool misc::autostop::wants_rage_stop( ) const
+	void misc::autostop::apply_brake( systems::input::usercmd* cmd, proto::base_usercmd_pb* base, float wish_x, float wish_y, float magnitude )
 	{
-		return features::combat::g_rage.should_stop( );
+		// The brake is a world-space direction; it is expressed against the camera yaw, not the yaw on the wire,
+		// because apply_movement_correction rotates every move into the sent basis at the end of the pipeline.
+		const auto& prestate = systems::g_prediction.pre( );
+		const auto yaw_rad = features::combat::g_misc.antiaim( ).movement_basis_yaw( base ) * ( std::numbers::pi_v<float> / 180.0f );
+		const auto sy = std::sinf( yaw_rad );
+		const auto cy = std::cosf( yaw_rad );
+
+		// Positive leftmove is left: the game's A key gives +1 (see antiaim's learned sign).
+		const auto forward_move = std::clamp( ( wish_x * cy + wish_y * sy ) * magnitude, -1.0f, 1.0f );
+		const auto left_move = std::clamp( ( wish_y * cy - wish_x * sy ) * magnitude, -1.0f, 1.0f );
+
+		base->set_forwardmove( forward_move );
+		base->set_leftmove( left_move );
+
+		if ( const auto subtick_moves = base->mutable_subtick_moves( ) )
+		{
+			if ( const auto step = systems::g_input.acquire_subtick_step( subtick_moves ) )
+			{
+				step->set_button( 0 );
+				step->set_pressed( false );
+				step->set_when( 0.0f );
+				step->set_analog_forward_delta( forward_move - prestate.last_movement_impulses.x );
+				step->set_analog_left_delta( left_move - prestate.last_movement_impulses.y );
+			}
+		}
+
+		// The game only reads an analog axis when one of its keys is in the button mask.
+		constexpr auto direction_mask = static_cast< std::uintptr_t >( cstypes::command_buttons::in_forward | cstypes::command_buttons::in_back | cstypes::command_buttons::in_moveleft | cstypes::command_buttons::in_moveright );
+		cmd->buttons.value &= ~direction_mask;
+
+		if ( forward_move > 0.0f )
+		{
+			cmd->buttons.value |= cstypes::command_buttons::in_forward;
+		}
+		else if ( forward_move < 0.0f )
+		{
+			cmd->buttons.value |= cstypes::command_buttons::in_back;
+		}
+
+		if ( left_move > 0.0f )
+		{
+			cmd->buttons.value |= cstypes::command_buttons::in_moveleft;
+		}
+		else if ( left_move < 0.0f )
+		{
+			cmd->buttons.value |= cstypes::command_buttons::in_moveright;
+		}
+
+		this->m_braked_this_tick = true;
 	}
 
-	bool misc::autostop::wants_manual_stop( ) const
+	/// Runs twice per command: once before the ragebot, braking for the target it found last tick so this tick's
+	/// accuracy prediction already includes the brake, and once after it, so a target that appeared this tick is
+	/// braked for on this command instead of the next one. It used to run only before the ragebot, which put every
+	/// stop a full tick behind the target.
+	///
+	/// Auto stop brakes on the ground. Jump scout adds the air brake: in the air the scout's accuracy comes from
+	/// the top of the jump, and counter-strafing against the velocity takes the horizontal speed out on the way.
+	void misc::autostop::on_create_move( systems::input::usercmd* cmd, bool after_rage )
 	{
-		if ( !settings::g_combat.m_autostop.enabled.value )
+		if ( !after_rage )
 		{
-			return false;
+			this->m_braked_this_tick = false;
+		}
+		else if ( this->m_braked_this_tick )
+		{
+			return;
+		}
+
+		const auto jump_scout = features::combat::g_misc.jumpscout( ).active_this_tick( );
+		if ( !settings::g_combat.m_autostop.enabled.value && !jump_scout )
+		{
+			return;
+		}
+
+		// A target the ragebot wants to stop for, or any target at all -- stopping never delays a shot that is
+		// already accurate, and it is what makes the next one accurate.
+		if ( !features::combat::g_rage.should_stop( ) && !features::combat::g_rage.has_target( ) )
+		{
+			return;
 		}
 
 		const auto& ctx = g_shared.ctx( );
-		if ( !ctx.valid )
-		{
-			return false;
-		}
-
-		// Knives and grenades have no accuracy penalty to counter-strafe away.
-		if ( ctx.weapon_type == cstypes::weapon_type::knife || ctx.weapon_type == cstypes::weapon_type::grenade )
-		{
-			return false;
-		}
-
-		// Only brake when the ragebot actually resolved someone. Holding the key used to stop
-		// you for any live weapon, which glued you to the floor alone on a wall.
-		//
-		// This reads one tick behind: autostop runs before rage in the create_move pipeline
-		// (see hooks/impl/cheat.cpp), so has_target( ) reports the previous command. That is
-		// deliberate — moving autostop after rage would also move it after slowwalk, edgebug
-		// and bhop and let it stomp them. 15.6 ms of latency on engaging the brake is not
-		// perceptible; the release is immediate because rage clears its target before the
-		// context guard.
-		return features::combat::g_rage.has_target( );
-	}
-
-	void misc::autostop::on_create_move( systems::input::usercmd* cmd )
-	{
-		const auto rage_stop = this->wants_rage_stop( );
-		const auto manual_stop = this->wants_manual_stop( );
-
-		if ( !rage_stop && !manual_stop )
+		if ( !ctx.valid || ctx.weapon_max_speed <= 0.0f || ctx.weapon_type == cstypes::weapon_type::knife || ctx.weapon_type == cstypes::weapon_type::grenade )
 		{
 			return;
 		}
@@ -1173,39 +1299,40 @@ namespace features::combat {
 		}
 
 		const auto movement_services = memory::read<std::uintptr_t>( local.pawn + SCHEMA( "C_BasePlayerPawn", "m_pMovementServices"_hash ) );
-		if ( !movement_services )
-		{
-			return;
-		}
-
 		const auto base = cmd->csgo_user_cmd.mutable_base( );
-		if ( !base )
+		if ( !movement_services || !base )
 		{
 			return;
 		}
 
 		const auto& prestate = systems::g_prediction.pre( );
-		const auto& ctx = g_shared.ctx( );
+		auto velocity = prestate.networked_velocity;
+		velocity.z = 0.0f;
+		auto speed = velocity.length_2d( );
 
 		if ( !( prestate.flags & cstypes::entity_flags::on_ground ) )
 		{
+			if ( !jump_scout )
+			{
+				return;
+			}
+
+			if ( speed <= 1.0f )
+			{
+				this->apply_brake( cmd, base, 0.0f, 0.0f, 0.0f );
+				return;
+			}
+
+			// Air acceleration adds airaccelerate * wishspeed * frametime * friction along the wish direction,
+			// and with the wish pointing against the velocity air_max_wishspeed does not cap it. Scaling the input
+			// so that equals the remaining speed stops without swinging past zero into the other direction.
+			const auto max_speed = memory::read<float>( movement_services + SCHEMA( "CPlayer_MovementServices", "m_flMaxspeed"_hash ) );
+			const auto per_tick = CONVAR ("sv_airaccelerate")->get<float>( ) * max_speed * cstypes::tick_interval * prestate.surface_friction;
+			const auto magnitude = per_tick > 0.0f ? std::clamp( speed / per_tick, 0.0f, 1.0f ) : 1.0f;
+
+			this->apply_brake( cmd, base, -velocity.x / speed, -velocity.y / speed, magnitude );
 			return;
 		}
-
-		// A jump scout owns the command while airborne and on the landing tick; stopping
-		// here would cancel the hop before it leaves the ground.
-		if ( features::combat::g_misc.jumpscout( ).active_this_tick( ) )
-		{
-			return;
-		}
-
-		if ( ctx.weapon_max_speed <= 0.0f )
-		{
-			return;
-		}
-
-		auto velocity = prestate.networked_velocity;
-		auto speed = velocity.length_2d( );
 
 		if ( speed <= 1.0f )
 		{
@@ -1227,129 +1354,27 @@ namespace features::combat {
 		}
 		else
 		{
-			base->set_forwardmove( 0.0f );
-			base->set_leftmove( 0.0f );
+			// Friction alone finishes the stop this tick.
+			this->apply_brake( cmd, base, 0.0f, 0.0f, 0.0f );
 			return;
 		}
 
 		if ( speed < 2.0f )
 		{
-			base->set_forwardmove( 0.0f );
-			base->set_leftmove( 0.0f );
+			this->apply_brake( cmd, base, 0.0f, 0.0f, 0.0f );
 			return;
-		}
-
-		auto accel = CONVAR ("sv_accelerate")->get<float>( );
-		const auto accel_base = this->get_effective_accel_base( local.pawn, movement_services, prestate.flags, ctx.weapon_max_speed );
-
-		if ( ctx.is_scoped )
-		{
-			const auto weapon_ratio = std::fminf( 1.0f, ctx.weapon_max_speed / 250.0f );
-			const auto v20 = std::fmaxf( 250.0f, memory::read<float>( movement_services + SCHEMA( "CPlayer_MovementServices", "m_flMaxspeed"_hash ) ) ) * weapon_ratio;
-			const auto scoped_max = v20 * 0.52f;
-
-			if ( speed > scoped_max - 5.0f )
-			{
-				const auto t = 1.0f - std::fmaxf( 0.0f, speed - ( scoped_max - 5.0f ) ) / std::fmaxf( 0.01f, 5.0f );
-				accel *= std::clamp( t, 0.0f, 1.0f );
-			}
 		}
 
 		const auto wish_x = -velocity.x / speed;
 		const auto wish_y = -velocity.y / speed;
-		const auto accel_speed = std::fminf( accel * accel_base * surface_friction * cstypes::tick_interval, speed );
-
-		velocity.x += wish_x * accel_speed;
-		velocity.y += wish_y * accel_speed;
 
 		// Scaling the analog input with the remaining speed brakes gently near the end; holding
 		// full deflection instead trades a little overshoot for a faster stop.
 		const auto move_magnitude = settings::g_combat.m_autostop.aggressive.value
 			? 1.0f
 			: std::clamp( speed / ctx.weapon_max_speed, 0.0f, 1.0f );
-		// Camera yaw, not the yaw on the wire. The brake vector is built here and rotated into the sent
-		// basis later by apply_movement_correction, so building it against a fake yaw rotated it twice
-		// and pointed the brake off true by the whole anti-aim offset -- accelerating sideways out of
-		// the stop rather than into it.
-		const auto yaw_rad = features::combat::g_misc.antiaim( ).movement_basis_yaw( base ) * ( std::numbers::pi_v<float> / 180.0f );
-		const auto sy = std::sinf( yaw_rad );
-		const auto cy = std::cosf( yaw_rad );
 
-		const auto forward_move = std::clamp( ( wish_x * cy + wish_y * sy ) * move_magnitude, -1.0f, 1.0f );
-		const auto left_move = std::clamp( ( wish_x * sy - wish_y * cy ) * -move_magnitude, -1.0f, 1.0f );
-
-		base->set_forwardmove( forward_move );
-		base->set_leftmove( left_move );
-
-		const auto subtick_moves = base->mutable_subtick_moves( );
-		if ( subtick_moves )
-		{
-			const auto step = systems::g_input.acquire_subtick_step( subtick_moves );
-			if ( step )
-			{
-				step->set_button( 0 );
-				step->set_pressed( false );
-				step->set_when( 0.0f );
-				step->set_analog_forward_delta( forward_move - prestate.last_movement_impulses.x );
-				step->set_analog_left_delta( left_move - prestate.last_movement_impulses.y );
-			}
-		}
-
-		if ( forward_move > 0.0f )
-		{
-			cmd->buttons.value |= cstypes::command_buttons::in_forward;
-		}
-		else if ( forward_move < 0.0f )
-		{
-			cmd->buttons.value |= cstypes::command_buttons::in_back;
-		}
-
-		// Negative leftmove is A/left — see test_strafer::movement_from_buttons, which is the
-		// convention airstrafe's yaw offsets are built against.
-		if ( left_move < 0.0f )
-		{
-			cmd->buttons.value |= cstypes::command_buttons::in_moveleft;
-		}
-		else if ( left_move > 0.0f )
-		{
-			cmd->buttons.value |= cstypes::command_buttons::in_moveright;
-		}
-	}
-
-	float misc::autostop::get_effective_accel_base( std::uintptr_t local_pawn, std::uintptr_t movement_services, std::uint32_t flags, float max_weapon_speed ) const
-	{
-		const auto max_speed_base = memory::read<float>( movement_services + SCHEMA( "CPlayer_MovementServices", "m_flMaxspeed"_hash ) );
-		const auto is_ducked = ( flags & 4 ) != 0;
-		const auto ducking_state = memory::read<bool>( movement_services + SCHEMA( "CPlayer_MovementServices", "m_bDucking"_hash ) );
-		const auto is_scoped = g_shared.ctx( ).is_scoped;
-		const auto is_ducking = is_ducked || ducking_state;
-		const auto v19 = std::fmaxf( 250.0f, max_speed_base );
-
-		auto friction_scale{ 1.0f };
-
-		if (CONVAR ("sv_accelerate_use_weapon_speed")->get<bool>( ) )
-		{
-			const auto weapon_ratio = std::fminf( 1.0f, max_weapon_speed / 250.0f );
-
-			if ( !is_ducking && !is_scoped )
-			{
-				friction_scale = weapon_ratio;
-			}
-		}
-
-		if ( is_ducking )
-		{
-			friction_scale = std::fminf( 0.34f, friction_scale );
-		}
-
-		auto accel_base = v19 * friction_scale;
-
-		if ( is_scoped && !is_ducking )
-		{
-			accel_base *= 0.52f;
-		}
-
-		return accel_base;
+		this->apply_brake( cmd, base, wish_x, wish_y, move_magnitude );
 	}
 
 	bool misc::jumpscout::has_ssg_08( ) const
@@ -1357,63 +1382,16 @@ namespace features::combat {
 		return g_shared.ctx( ).item_def_idx == cstypes::item_definition_index::weapon_ssg_08;
 	}
 
-	bool misc::jumpscout::should_jump( const math::vector3& velocity, bool on_ground, float jump_initial, float jump_apex, float min_air_inaccuracy, float threshold_multiplier ) const
-	{
-		if ( !on_ground )
-		{
-			return false;
-		}
-
-		// Jumping while already braking wastes the hop — the scout needs the airborne
-		// window to spend the jump penalty decaying toward apex.
-		if ( velocity.z > 0.0f )
-		{
-			return false;
-		}
-
-		// A hop is only worth it if the apex is actually accurate enough to shoot from.
-		const auto apex_inaccuracy = min_air_inaccuracy + jump_apex;
-		const auto initial_inaccuracy = min_air_inaccuracy + jump_initial;
-
-		if ( initial_inaccuracy <= 0.0f )
-		{
-			return false;
-		}
-
-		return apex_inaccuracy <= initial_inaccuracy * threshold_multiplier;
-	}
-
-	bool misc::jumpscout::ready_to_fire( systems::input::usercmd* cmd, std::uintptr_t local_controller, float jump_initial, float jump_apex ) const
-	{
-		if ( !g_shared.can_shoot( cmd, local_controller ) )
-		{
-			return false;
-		}
-
-		if ( !g_shared.ctx( ).is_scoped )
-		{
-			return false;
-		}
-
-		const auto& prestate = systems::g_prediction.pre( );
-		if ( prestate.flags & cstypes::entity_flags::on_ground )
-		{
-			return false;
-		}
-
-		// The SSG reaches its airborne accuracy floor near the apex, where vertical speed
-		// crosses zero. Fire on the tick the interpolated penalty lands at that floor.
-		const auto air_inaccuracy = g_shared.get_air_inaccuracy( prestate.networked_velocity.z, jump_initial, jump_apex );
-
-		return air_inaccuracy <= jump_apex + 0.001f;
-	}
-
+	/// Jump scout is part of the ragebot now. It used to press jump for you and attack near the apex -- an auto
+	/// jump that knew nothing about targets. You jump; while you are in the air with the scout this marks the
+	/// tick active, which (1) lets the ragebot plan an air stop and hold a hit-chance shot until the top of the
+	/// jump, and (2) has auto stop counter-strafe the horizontal speed away.
 	void misc::jumpscout::on_create_move( systems::input::usercmd* cmd )
 	{
+		( void )cmd;
 		this->m_active_this_tick = false;
 
-		auto& cfg = settings::g_combat.m_jumpscout;
-		if ( !cfg.enabled.value )
+		if ( !settings::g_combat.m_jumpscout.enabled.value )
 		{
 			return;
 		}
@@ -1421,93 +1399,41 @@ namespace features::combat {
 		const auto& ctx = g_shared.ctx( );
 		if ( !ctx.valid || !this->has_ssg_08( ) )
 		{
-			this->m_hop_pending = false;
 			return;
 		}
 
 		const auto local = systems::g_local.get( );
-		if ( !local.pawn || !local.controller )
+		if ( !local.pawn || systems::g_local.is_in_cinematic( ) || systems::g_local.is_in_time_freeze( ) )
 		{
-			this->m_hop_pending = false;
-			return;
-		}
-
-		if ( systems::g_local.is_in_cinematic( ) || systems::g_local.is_in_time_freeze( ) )
-		{
-			this->m_hop_pending = false;
 			return;
 		}
 
 		const auto move_type = memory::read<std::uint8_t>( local.pawn + SCHEMA( "C_BaseEntity", "m_nActualMoveType"_hash ) );
 		if ( move_type == cstypes::move_type::ladder || move_type == cstypes::move_type::noclip )
 		{
-			this->m_hop_pending = false;
 			return;
 		}
 
-		const auto attacking = ( cmd->buttons.value & cstypes::command_buttons::in_attack ) != 0;
-		const auto wants_shot = attacking || this->m_hop_pending;
+		this->m_active_this_tick = !( systems::g_prediction.pre( ).flags & cstypes::entity_flags::on_ground );
+	}
 
-		if ( cfg.mode.value == settings::combat::jumpscout::scout_mode::on_attack && !wants_shot )
+	bool misc::jumpscout::apex_ready( ) const
+	{
+		const auto& ctx = g_shared.ctx( );
+		if ( !ctx.weapon_vdata )
 		{
-			return;
+			return true;
 		}
 
-		const auto base = cmd->csgo_user_cmd.mutable_base( );
-		if ( !base )
-		{
-			return;
-		}
-
+		// The scout's air inaccuracy follows the vertical speed: jump_initial at take-off, jump_apex where the
+		// vertical speed crosses zero. The threshold says how close to the apex the shot has to wait for -- 1 is
+		// the apex itself, 0.85 allows the last 15% of the way there.
 		const auto jump_initial = memory::read<float>( ctx.weapon_vdata + SCHEMA( "CCSWeaponBaseVData", "m_flInaccuracyJumpInitial"_hash ) );
 		const auto jump_apex = memory::read<float>( ctx.weapon_vdata + SCHEMA( "CCSWeaponBaseVData", "m_flInaccuracyJumpApex"_hash ) );
-		const auto accuracy_penalty = memory::read<float>( ctx.weapon + SCHEMA( "C_CSWeaponBase", "m_fAccuracyPenalty"_hash ) );
+		const auto strictness = std::clamp( settings::g_combat.m_jumpscout.threshold.value, 0.05f, 1.0f );
+		const auto air = g_shared.get_air_inaccuracy( systems::g_prediction.pre( ).networked_velocity.z, jump_initial, jump_apex );
 
-		const auto& prestate = systems::g_prediction.pre( );
-		const auto on_ground = ( prestate.flags & cstypes::entity_flags::on_ground ) != 0;
-		const auto threshold = std::clamp( cfg.threshold.value, 0.05f, 1.0f );
-
-		if ( this->should_jump( prestate.networked_velocity, on_ground, jump_initial, jump_apex, accuracy_penalty, threshold ) )
-		{
-			// Bunnyhop owns the airborne jump timing; here we only need the initial hop.
-			cmd->buttons.value |= cstypes::command_buttons::in_jump;
-			cmd->buttons.value_changed |= cstypes::command_buttons::in_jump;
-
-			// Suppress the shot on the launch tick — firing on the ground defeats the hop.
-			cmd->buttons.value &= ~cstypes::command_buttons::in_attack;
-			cmd->buttons.value_changed |= cstypes::command_buttons::in_attack;
-			cmd->buttons.value_scroll &= ~cstypes::command_buttons::in_attack;
-
-			this->m_hop_pending = true;
-			this->m_active_this_tick = true;
-			return;
-		}
-
-		if ( on_ground )
-		{
-			this->m_hop_pending = false;
-			return;
-		}
-
-		this->m_active_this_tick = true;
-
-		if ( !this->ready_to_fire( cmd, local.controller, jump_initial, jump_apex ) )
-		{
-			// Hold the shot until the apex window; releasing keeps the weapon primed.
-			cmd->buttons.value &= ~cstypes::command_buttons::in_attack;
-			cmd->buttons.value_changed |= cstypes::command_buttons::in_attack;
-			cmd->buttons.value_scroll &= ~cstypes::command_buttons::in_attack;
-			return;
-		}
-
-		if ( cfg.mode.value == settings::combat::jumpscout::scout_mode::always || attacking || this->m_hop_pending )
-		{
-			cmd->buttons.value |= cstypes::command_buttons::in_attack;
-			cmd->buttons.value_changed |= cstypes::command_buttons::in_attack;
-			cmd->buttons.value_scroll |= cstypes::command_buttons::in_attack;
-		}
-
-		this->m_hop_pending = false;
+		return air <= jump_apex + ( jump_initial - jump_apex ) * ( 1.0f - strictness ) + 0.001f;
 	}
 
 } // namespace features::combat

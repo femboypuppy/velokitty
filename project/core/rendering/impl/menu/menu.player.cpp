@@ -69,7 +69,7 @@ namespace rendering {
 		{
 			auto& ov = p.m_overlay[ subtab ];
 
-			if ( xui::begin_child( "##player_esp", col_w ) )
+			if ( xui::begin_child( "esp##player_esp", col_w ) )
 			{
 				xui::checkbox( "esp overlay", ov.enabled );
 
@@ -211,7 +211,7 @@ namespace rendering {
 		}
 		else
 		{
-			if ( xui::begin_child( "##local_chams_glow", col_w ) )
+			if ( xui::begin_child( "local##local_chams_glow", col_w ) )
 			{
 				detail::draw_chams_config( "chams", "local_main", p.m_chams.local );
 
@@ -256,7 +256,7 @@ namespace rendering {
 			auto& chams = ( subtab == 0 ) ? p.m_chams.enemy : p.m_chams.team;
 			auto& chams_ragdoll = ( subtab == 0 ) ? p.m_chams.enemy_ragdoll : p.m_chams.team_ragdoll;
 
-			if ( xui::begin_child( "##player_chams", col_w ) )
+			if ( xui::begin_child( "chams##player_chams", col_w ) )
 			{
 				detail::draw_chams_config( "chams", "main", chams );
 
@@ -282,7 +282,7 @@ namespace rendering {
 		}
 		else
 		{
-			if ( xui::begin_child( "##viewmodel", col_w ) )
+			if ( xui::begin_child( "viewmodel##viewmodel", col_w ) )
 			{
 				detail::draw_chams_config( "weapon chams", "vm_weapon", esp.m_viewmodel.weapon );
 

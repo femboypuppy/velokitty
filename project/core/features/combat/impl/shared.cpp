@@ -85,10 +85,12 @@ namespace features::combat {
 
 	int shared::penetration::resolve_layer_cap( ) const
 	{
-		return std::clamp( settings::g_combat.m_ragebot.get_group( g_shared.ctx( ).weapon_type ).penetration_layers.value, 1, 8 );
+		// The game's fire code always traces with 4 (the constant at 0xD24097). A scan allowed more layers than the
+		// real bullet predicted damage through walls the bullet never gets through.
+		return std::clamp( settings::g_combat.m_ragebot.get_group( g_shared.ctx( ).weapon_type ).penetration_layers.value, 1, 4 );
 	}
 
-	bool shared::penetration::run( const math::vector3& start, const math::vector3& end, const run_context& ctx, std::uintptr_t local_pawn, int local_team, result& out, int aimed_hitbox ) const
+	bool shared::penetration::run( const math::vector3& start, const math::vector3& end, const run_context& ctx, std::uintptr_t local_pawn, int local_team, result& out, int aimed_hitbox, bool log_contacts ) const
 	{
 		if ( this->m_weapon_data.damage <= 0.0f )
 		{
@@ -98,7 +100,7 @@ namespace features::combat {
 		const auto direction = ( end - start ).normalized( );
 		const auto trace_delta = direction * this->m_weapon_data.range;
 
-		auto filter = systems::g_tracing.make_filter( local_pawn, 0x1c300b, 3, 15 );
+		auto filter = systems::g_tracing.make_bullet_filter( local_pawn );
 		// Rage scanning calls this hundreds of times in a frame. Reuse the large
 		// trace buffer per worker instead of allocating and freeing 7 KB per point.
 		thread_local systems::tracing::trace_data trace_storage{};
@@ -194,38 +196,82 @@ namespace features::combat {
 			}
 		}
 
+		if ( log_contacts )
+		{
+			// Everything the engine's bullet simulation recorded for this ray, in order. Paired with the damage that
+			// actually landed, this shows which surface costs the damage the prediction loses on wallbangs.
+			auto live_offset{ -1.0f };
+			if ( ctx.record )
+			{
+				const auto node = memory::read<std::uintptr_t>( ctx.target_pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) );
+				if ( node )
+				{
+					live_offset = ( memory::read<math::vector3>( node + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) ) - ctx.record->origin ).length( );
+				}
+			}
+
+			diag::writef( diag::level::info, "contacts: n=%d straight_ray_hitbox=%d at %.3f | live player %.1f units from the record | layers=%d weapon dmg=%.0f pen=%.2f",
+				num_hits, actual_hitbox, closest_hitbox_fraction, live_offset, ctx.max_layers, this->m_weapon_data.damage, this->m_weapon_data.penetration );
+
+			for ( auto i = 0; i < num_hits; ++i )
+			{
+				const auto* rec = reinterpret_cast< const detail::bullet_trace_record* >( hit_array + i * sizeof( detail::bullet_trace_record ) );
+				const auto holder = surface_array + sizeof( systems::tracing::trace_array_element ) * ( rec->enter_contact_ix & 0x7fff );
+				const auto entity = systems::g_entities.lookup( memory::read<std::uint32_t>( holder + 0x2c ) );
+
+				diag::writef( diag::level::info, "  contact %d: enter=%.4f exit=%.4f dmg_after=%.1f flags=0x%02X int=%d ix=%u/%u entity=%s",
+					i, rec->enter_fraction, rec->exit_fraction, rec->damage_applied, rec->can_penetrate, rec->team_at_contact,
+					static_cast< unsigned >( rec->enter_contact_ix ), static_cast< unsigned >( rec->exit_contact_ix ),
+					!entity ? "world" : entity == ctx.target_pawn ? "TARGET" : entity == local_pawn ? "self" : "other" );
+			}
+		}
+
+		// The engine writes one record per stretch of the bullet's path: travel segments (flag clear) lose damage to
+		// range, surface crossings (flag set) lose it to penetration, and each record holds the damage *after* it.
+		// The player takes the damage the bullet arrives with. When the bullet reaches the target through a wall,
+		// the first record naming the target is the crossing *into* the player -- its damage is what is left after
+		// passing through the body, not what the body took. Reading that one (or the segment behind it, as this
+		// used to) under-predicted every wallbang by the player's own penetration cost: 29.3 instead of 45.2 in the
+		// logged shot, the 1.5x the logs showed since the first session.
 		auto penetrated{ false };
+		auto arriving_damage{ -1.0f };
 
 		for ( auto i = 0; i < num_hits; ++i )
 		{
 			auto hit = reinterpret_cast< detail::bullet_trace_record* >( hit_array + i * sizeof( detail::bullet_trace_record ) );
-			const auto damage = *reinterpret_cast< float* >( reinterpret_cast< std::uintptr_t >( hit ) + 8 );
+			const auto damage = hit->damage_applied;
+			const auto damage_before = arriving_damage;
+			arriving_damage = damage;
 
 			if ( damage <= 0.0f )
 			{
 				break;
 			}
 
-			if ( ( hit->can_penetrate & 1 ) != 0 )
-			{
-				penetrated = true;
+			const auto trace_holder = surface_array + sizeof( systems::tracing::trace_array_element ) * ( hit->enter_contact_ix & 0x7fff );
+			const auto hit_handle = memory::read<std::uint32_t>( trace_holder + 0x2c );
+			const auto hit_entity = systems::g_entities.lookup( hit_handle );
+			const auto is_target = hit_entity && hit_entity == ctx.target_pawn;
 
-				if ( *reinterpret_cast< float* >( reinterpret_cast< std::uintptr_t >( hit ) + 4 ) == 1.0f )
+			if ( !is_target )
+			{
+				if ( ( hit->can_penetrate & 1 ) != 0 )
 				{
-					break;
+					penetrated = true;
+
+					// An exit fraction of 1 is where the engine gave up: the bullet did not come out of this surface.
+					if ( hit->exit_fraction == 1.0f )
+					{
+						break;
+					}
 				}
 
 				continue;
 			}
 
-			const auto trace_holder = surface_array + sizeof( systems::tracing::trace_array_element ) * ( hit->enter_contact_ix & 0x7fff );
-			const auto hit_handle = memory::read<std::uint32_t>( trace_holder + 0x2c );
-			const auto hit_entity = systems::g_entities.lookup( hit_handle );
-
-			if ( !hit_entity || hit_entity != ctx.target_pawn )
-			{
-				continue;
-			}
+			// First record on the target. A crossing into it means the damage it arrived with is the previous
+			// record's; a travel segment ending on it (the direct shot) already holds the arriving damage.
+			const auto dealt = ( ( hit->can_penetrate & 1 ) != 0 && damage_before > 0.0f ) ? damage_before : damage;
 
 			// The engine says this bullet landed on the pawn we are scanning, but the local
 			// ray-vs-bone pass walks a straight line from the eye. A bullet that changed
@@ -250,7 +296,7 @@ namespace features::combat {
 			out.hitbox = resolved_hitbox;
 			out.hitgroup = systems::g_hitboxes.hitgroup_from_hitbox( resolved_hitbox );
 			out.penetrated = penetrated;
-			out.damage = damage;
+			out.damage = dealt;
 
 			this->scale_damage( out.hitgroup, ctx.target_armor, ctx.has_helmet, ctx.target_team, ctx.armor_ratio, ctx.headshot_multiplier, ctx.scales, out.damage );
 
@@ -273,7 +319,7 @@ namespace features::combat {
 		const auto local_team = memory::read<int>( local.pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
 		const auto trace_delta = direction * this->m_weapon_data.range;
 
-		auto filter = systems::g_tracing.make_filter( local.pawn, 0x1c300b, 3, 15 );
+		auto filter = systems::g_tracing.make_bullet_filter( local.pawn );
 		thread_local systems::tracing::trace_data trace_storage{};
 		trace_storage = {};
 		auto* trace = &trace_storage;
@@ -1131,6 +1177,31 @@ namespace features::combat {
 		return out;
 	}
 
+	math::vector3 shared::get_aim_punch_at( std::uintptr_t local_pawn, int tick, float fraction ) const
+	{
+		static const auto aim_punch_at_time = PATTERN( patterns::aim_punch_at_time );
+
+		const auto services = memory::read<std::uintptr_t>( local_pawn + SCHEMA( "C_CSPlayerPawn", "m_pAimPunchServices"_hash ) );
+		if ( !aim_punch_at_time || !services )
+		{
+			return this->get_aim_punch( local_pawn );
+		}
+
+		// The fire code passes its whole shot record here; the function only reads the tick and fraction at its
+		// head (0x15EA5A0 subtracts them from the punch's base time). The padding keeps any other read in bounds.
+		struct
+		{
+			int tick;
+			float fraction;
+			std::byte pad[ 0x38 ];
+		} shot_time{ tick, fraction, {} };
+
+		math::vector3 out{};
+		memory::call<void>( aim_punch_at_time, services, &out, &shot_time, true );
+
+		return out;
+	}
+
 	float shared::calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, float inaccuracy, float spread, int samples ) const
 	{
 		const auto total = spread + inaccuracy;
@@ -1252,25 +1323,180 @@ namespace features::combat {
 		return static_cast< float >( hits ) / static_cast< float >( samples );
 	}
 
-	math::vector3 shared::find_spread_correction( const math::vector3& aim_angle, int tick ) const
+	/// How the game turns shot angles and a tick into the spread seed (0xD23910): pitch and yaw are normalised and
+	/// rounded to the nearest half degree (0xD1CB20), then hashed together with the tick. Every pair of angles in
+	/// the same half-degree cell therefore gets the same seed.
+	///
+	/// The bullet leaves along forward + left * x + up * y of the shot angles (roll included), where (x, y) is the
+	/// seed's spread offset. To land on aim_angle the shot angles have to sit on a cone of half-angle
+	/// atan(|offset|) around it, rolled so the offset points back at the aim.
+	///
+	/// The old solver only moved the pitch, so it could only use the cells in one column. Each cell has a roughly
+	/// one-in-(cone width / half a degree) chance of producing a seed whose cone passes back through it, and the
+	/// whole column held about one such cell on average: on 8% of ticks scoped and 38% of ticks in the air there
+	/// was none, the shot was held, and it went out a tick or more late. Walking the cone in both pitch and yaw
+	/// finds one on every tick (0 failures in 6,000 simulated shots against the same seed rules).
+	///
+	/// Every answer is checked with the game's own functions before it is used: the exact angles must hash to the
+	/// seed that produced the offset, and the bullet must land on the aim line. Among valid answers the search
+	/// prefers one that sits at least 0.1 degrees inside its cell, so a small difference between the punch
+	/// predicted here and the one the server applies cannot push the angles into the neighbouring cell.
+	shared::spread_solution shared::find_spread_correction( const math::vector3& aim_angle, int tick, const math::vector3& punch ) const
 	{
-		for ( auto i = 0; i < 720; i++ )
-		{
-			const auto test_angles = math::vector3{ static_cast< float >( i ) / 2.0f, aim_angle.y, 0.0f };
-			const auto seed = this->get_spread_seed( test_angles, tick );
-			const auto spread = this->calculate_spread( seed, this->m_ctx.inaccuracy, this->m_ctx.spread, this->m_ctx.recoil_index, this->m_ctx.item_def_idx, this->m_ctx.num_bullets );
+		constexpr auto k_cell{ 0.5f };
+		constexpr auto k_half_cell{ 0.25f };
+		constexpr auto k_budget{ 4096 };
+		constexpr auto k_wanted_margin{ 0.1f };
+		// Any verified answer is taken if nothing better turns up; the margin only ranks them.
+		constexpr auto k_min_margin{ 0.0f };
+		constexpr auto k_max_pitch{ 89.0f };
+		// 0.003 degrees is 0.1 units at 2000 units. The algebra is exact; this only absorbs float rounding.
+		constexpr auto k_max_error{ 5.0e-5f };
 
-			auto adj_angle = aim_angle;
-			adj_angle.x += math::helpers::rad_to_deg( std::atan( std::sqrt( spread.x * spread.x + spread.y * spread.y ) ) );
-			adj_angle.z = -math::helpers::rad_to_deg( std::atan2( spread.x, spread.y ) );
-
-			if ( this->get_spread_seed( adj_angle, tick ) == seed )
+		const auto seed_cell = [ ]( float angle )
 			{
-				return adj_angle;
+				math::helpers::normalize_angle( angle );
+				return std::round( angle * 2.0f ) * 0.5f;
+			};
+
+		// FireBullets hands min( inaccuracy, 1 ) to the spread function (0xD239F1).
+		const auto inaccuracy = std::min( this->m_ctx.inaccuracy, 1.0f );
+		const auto spread = this->m_ctx.spread;
+
+		// With spread effectively off -- servers running weapon_accuracy_nospread report an inaccuracy of 0 -- the
+		// largest possible deflection is under 0.02 degrees, a third of a unit at 1000 units. There is nothing to
+		// correct, and searching for a cell with room to spare held the one real kill in the HvH log for 9 ticks.
+		if ( math::helpers::rad_to_deg( std::atan( inaccuracy + spread ) ) < 0.02f )
+		{
+			return { { aim_angle.x, aim_angle.y, 0.0f }, 0u, 0, k_half_cell, true };
+		}
+
+		math::vector3 aim_forward{};
+		math::helpers::angle_vectors_left( { aim_angle.x, aim_angle.y, 0.0f }, &aim_forward );
+
+		const auto max_cone = math::helpers::rad_to_deg( std::atan( inaccuracy + spread ) ) + k_cell;
+		const auto cos_pitch = std::max( std::cosf( math::helpers::deg_to_rad( aim_angle.x ) ), 0.05f );
+		const auto pitch_cells = static_cast< int >( std::ceil( max_cone / k_cell ) ) + 1;
+		const auto yaw_cells = std::min( static_cast< int >( std::ceil( max_cone / ( k_cell * cos_pitch ) ) ) + 1, 360 );
+		const auto center_pitch = seed_cell( aim_angle.x );
+		const auto center_yaw = seed_cell( aim_angle.y );
+
+		struct cell
+		{
+			float distance;
+			int pitch;
+			int yaw;
+		};
+
+		// Nearest cells first. Any order would work; this one keeps the view close to the target.
+		thread_local std::vector<cell> cells{};
+		cells.clear( );
+		for ( auto dp = -pitch_cells; dp <= pitch_cells; ++dp )
+		{
+			for ( auto dy = -yaw_cells; dy <= yaw_cells; ++dy )
+			{
+				const auto distance = std::hypot( dp * k_cell, dy * k_cell * cos_pitch );
+				if ( distance <= max_cone + k_cell )
+				{
+					cells.push_back( { distance, dp, dy } );
+				}
 			}
 		}
 
-		return {};
+		std::sort( cells.begin( ), cells.end( ), [ ]( const cell& a, const cell& b ) { return a.distance < b.distance; } );
+
+		spread_solution best{};
+		auto evaluated{ 0 };
+
+		for ( const auto& c : cells )
+		{
+			if ( evaluated >= k_budget )
+			{
+				break;
+			}
+
+			const auto cell_pitch = center_pitch + static_cast< float >( c.pitch ) * k_cell;
+			auto cell_yaw = center_yaw + static_cast< float >( c.yaw ) * k_cell;
+			math::helpers::normalize_angle( cell_yaw );
+
+			if ( std::fabsf( cell_pitch ) > k_max_pitch )
+			{
+				continue;
+			}
+
+			++evaluated;
+
+			const auto seed = this->get_spread_seed( { cell_pitch, cell_yaw, 0.0f }, tick );
+			const auto offset = this->calculate_spread( static_cast< int >( seed ), inaccuracy, spread, this->m_ctx.recoil_index, this->m_ctx.item_def_idx, this->m_ctx.num_bullets );
+			const auto cone = std::atan( std::hypot( offset.x, offset.y ) );
+
+			// The point on the cone in the direction of this cell's centre.
+			math::vector3 cell_forward{};
+			math::helpers::angle_vectors_left( { cell_pitch, cell_yaw, 0.0f }, &cell_forward );
+
+			auto radial = cell_forward - aim_forward * aim_forward.dot( cell_forward );
+			const auto radial_length = radial.length( );
+			if ( radial_length < 1.0e-6f )
+			{
+				continue;
+			}
+
+			radial = radial * ( 1.0f / radial_length );
+
+			auto shot = math::helpers::vector_to_angle( aim_forward * std::cosf( cone ) + radial * std::sinf( cone ) );
+			math::helpers::normalize_angle( shot.y );
+
+			const auto margin = std::min( k_half_cell - std::fabsf( shot.x - cell_pitch ), k_half_cell - std::fabsf( math::helpers::normalize_yaw( shot.y - cell_yaw ) ) );
+			if ( margin < k_min_margin || ( best.valid && margin <= best.margin ) )
+			{
+				continue;
+			}
+
+			// The shot pitch and the view pitch the command carries both have to stay inside the clamp.
+			if ( std::fabsf( shot.x ) > k_max_pitch || std::fabsf( shot.x - punch.x ) > k_max_pitch )
+			{
+				continue;
+			}
+
+			// Roll the frame so the seed's offset points back at the aim line.
+			math::vector3 forward{}, left{}, up{};
+			math::helpers::angle_vectors_left( { shot.x, shot.y, 0.0f }, &forward, &left, &up );
+
+			const auto along = aim_forward.dot( forward );
+			if ( along <= 0.0f )
+			{
+				continue;
+			}
+
+			const auto needed_left = aim_forward.dot( left ) / along;
+			const auto needed_up = aim_forward.dot( up ) / along;
+			shot.z = math::helpers::rad_to_deg( std::atan2( offset.y, offset.x ) - std::atan2( needed_up, needed_left ) );
+			math::helpers::normalize_angle( shot.z );
+
+			// Verify with the game's own functions: these exact angles hash to this seed, and the bullet they fire
+			// lands on the aim line.
+			if ( this->get_spread_seed( shot, tick ) != seed )
+			{
+				continue;
+			}
+
+			math::helpers::angle_vectors_left( shot, &forward, &left, &up );
+			const auto bullet = ( forward + left * offset.x + up * offset.y ).normalized( );
+			if ( ( bullet - aim_forward ).length( ) > k_max_error )
+			{
+				continue;
+			}
+
+			best = { shot, seed, evaluated, margin, true };
+
+			if ( margin >= k_wanted_margin )
+			{
+				break;
+			}
+		}
+
+		best.evaluated = evaluated;
+		return best;
 	}
 
 	math::vector3 shared::get_eye_position( std::uintptr_t local_pawn ) const

@@ -954,7 +954,7 @@ namespace rendering {
 		this->m_textures.cfg_cloud_off.resource = xdraw::load_svg( svgs::cfg_cloud_dim, k_cfg_icon_scale, &this->m_textures.cfg_cloud_off.width, &this->m_textures.cfg_cloud_off.height );
 		this->m_textures.cfg_plus.resource = xdraw::load_svg( svgs::cfg_plus, 1.0f, &this->m_textures.cfg_plus.width, &this->m_textures.cfg_plus.height );
 
-		constexpr auto tab_target{ 22.0f };
+		constexpr auto tab_target{ 24.0f };
 		constexpr std::array<const char*, static_cast< std::size_t >( tab::count )> tab_svgs{
 			svgs::tab_rage,
 			svgs::tab_legit,
@@ -1349,6 +1349,19 @@ namespace rendering {
 			return;
 		}
 
+		// The legacy skin draws in the small classic font; pushed for the whole menu, popped on every way out.
+		struct font_scope
+		{
+			bool pushed{};
+			~font_scope( ) { if ( this->pushed ) { xdraw::pop_font( ); } }
+		} font_guard{};
+
+		if ( settings::g_gui.legacy_skin.value && g_fonts.legacy_menu )
+		{
+			xdraw::push_font( g_fonts.legacy_menu );
+			font_guard.pushed = true;
+		}
+
 		xui::begin( );
 		this->sync_theme_style( );
 		{
@@ -1394,20 +1407,38 @@ namespace rendering {
 			const auto sb_w = tokens::sidebar_w;
 			const auto sb_h = wh - tokens::gap * 2.0f;
 
-			const auto logo_h = tokens::subtab_bar_h;
-			dl.rect_filled( sb_x, sb_y, sb_w, logo_h, tokens::col_card, xdraw::corner_radius{ tokens::card_rounding } );
+			if ( settings::g_gui.legacy_skin.value )
+			{
+				// The tab column runs the full height of the frame's inner plate, darker than the content, with a
+				// black-and-grey rule down its right edge. draw_side_bar paints the tabs into it.
+				const auto col_x = std::floor( wx + 6.0f );
+				const auto col_y = std::floor( wy + 8.0f );
+				const auto col_w = std::floor( sb_x + sb_w + 3.0f - col_x );
+				const auto col_h = std::floor( wh - 14.0f );
 
-			const auto logo_pill_x = sb_x + 4.0f;
-			const auto logo_pill_y = sb_y + 4.0f;
-			const auto logo_pill_w = sb_w - 8.0f;
-			const auto logo_pill_h = logo_h - 8.0f;
-			xui::accent_fill( dl, logo_pill_x, logo_pill_y, logo_pill_w, logo_pill_h, tokens::col_accent, tokens::btn_rounding );
+				dl.rect_filled( col_x, col_y, col_w, col_h, xdraw::color{ 12, 12, 12, 255 } );
+				dl.rect_filled( col_x + col_w, col_y, 1.0f, col_h, xdraw::color{ 0, 0, 0, 255 } );
+				dl.rect_filled( col_x + col_w + 1.0f, col_y, 1.0f, col_h, xdraw::color{ 44, 44, 44, 255 } );
 
-			const auto tabs_y = sb_y + logo_h + tokens::gap;
-			const auto tabs_h = sb_h - logo_h - tokens::gap;
-			dl.rect_filled( sb_x, tabs_y, sb_w, tabs_h, tokens::col_card, xdraw::corner_radius{ tokens::card_rounding } );
+				this->draw_side_bar( col_h );
+			}
+			else
+			{
+				const auto logo_h = tokens::subtab_bar_h;
+				dl.rect_filled( sb_x, sb_y, sb_w, logo_h, tokens::col_card, xdraw::corner_radius{ tokens::card_rounding } );
 
-			this->draw_side_bar( tabs_h );
+				const auto logo_pill_x = sb_x + 4.0f;
+				const auto logo_pill_y = sb_y + 4.0f;
+				const auto logo_pill_w = sb_w - 8.0f;
+				const auto logo_pill_h = logo_h - 8.0f;
+				xui::accent_fill( dl, logo_pill_x, logo_pill_y, logo_pill_w, logo_pill_h, tokens::col_accent, tokens::btn_rounding );
+
+				const auto tabs_y = sb_y + logo_h + tokens::gap;
+				const auto tabs_h = sb_h - logo_h - tokens::gap;
+				dl.rect_filled( sb_x, tabs_y, sb_w, tabs_h, tokens::col_card, xdraw::corner_radius{ tokens::card_rounding } );
+
+				this->draw_side_bar( tabs_h );
+			}
 
 			const auto content_x = sb_x + sb_w + tokens::gap;
 			const auto content_y = sb_y;
@@ -1438,6 +1469,11 @@ namespace rendering {
 				return;
 			}
 
+			if ( this->m_unload_open )
+			{
+				this->draw_unload( );
+			}
+			else
 			switch ( this->m_tab )
 			{
 			case 0: this->draw_ragebot( col_w ); break;
@@ -1488,6 +1524,12 @@ namespace rendering {
 		auto& dl = xui::draw::current( );
 		const auto& input = xui::ctx( ).input;
 
+		if ( settings::g_gui.legacy_skin.value )
+		{
+			this->draw_legacy_tabs( h );
+			return;
+		}
+
 		const auto sb_x = this->m_x + tokens::gap;
 		const auto logo_h = tokens::subtab_bar_h;
 		const auto tabs_y = this->m_y + tokens::gap + logo_h + tokens::gap;
@@ -1526,6 +1568,7 @@ namespace rendering {
 			{
 				this->m_tab = i;
 				this->m_subtab = 0;
+				this->m_unload_open = false;
 			}
 
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "sidebar" ) + i, hovered ? 1.0f : 0.0f, 12.0f );
@@ -1556,6 +1599,24 @@ namespace rendering {
 		const auto avatar_y = tabs_y + h - tokens::tab_icon_size - icon_pad;
 		const auto avatar_x = sb_x + ( tokens::sidebar_w - tokens::tab_icon_size ) * 0.5f;
 
+		// The avatar doubles as the entry to the unload page: it is the one control in the sidebar that is not a
+		// tab, so it is not somewhere a stray click lands while moving between pages.
+		{
+			const auto avatar_rect = xui::rect{ std::floor( avatar_x ), std::floor( avatar_y ), tokens::tab_icon_size, tokens::tab_icon_size };
+			const auto avatar_hovered = input.in_rect( avatar_rect );
+
+			if ( !this->m_search_open && avatar_hovered && input.mouse_clicked && !xui::ctx( ).overlay_blocking( ) )
+			{
+				this->m_unload_open = !this->m_unload_open;
+			}
+
+			const auto avatar_anim = xui::anim::lerp( xui::fnv1a( "sidebar_avatar" ), this->m_unload_open ? 1.0f : ( avatar_hovered ? 0.5f : 0.0f ), 12.0f );
+			if ( avatar_anim > 0.01f )
+			{
+				dl.rect( avatar_rect.x - 1.0f, avatar_rect.y - 1.0f, avatar_rect.w + 2.0f, avatar_rect.h + 2.0f, tokens::col_accent.alpha( static_cast< std::uint8_t >( 200.0f * avatar_anim ) ), xdraw::corner_radius{ 8.0f } );
+			}
+		}
+
 		this->try_load_user_avatar( );
 		if ( this->m_textures.user.resource )
 		{
@@ -1565,6 +1626,85 @@ namespace rendering {
 		{
 			dl.rect_filled( std::floor( avatar_x ), std::floor( avatar_y ), tokens::tab_icon_size, tokens::tab_icon_size, tokens::col_card, xdraw::corner_radius{ 7.0f } );
 		}
+	}
+
+	void menu::draw_legacy_tabs( float h )
+	{
+		auto& dl = xui::draw::current( );
+		const auto& input = xui::ctx( ).input;
+
+		constexpr auto tab_count{ static_cast< int >( tab::count ) };
+		constexpr auto avatar_size{ 32.0f };
+
+		const auto col_x = std::floor( this->m_x + 6.0f );
+		const auto col_y = std::floor( this->m_y + 8.0f );
+		const auto col_w = std::floor( this->m_x + tokens::gap + tokens::sidebar_w + 3.0f - col_x );
+
+		// Tabs share the column above the avatar; each cell is one tab. The active cell is painted in the content
+		// colour and runs over the column's right-hand rule, so it reads as a tab joined to the page it opens.
+		const auto avatar_room = avatar_size + 12.0f;
+		const auto cell_h = std::floor( std::clamp( ( h - avatar_room - 8.0f ) / static_cast< float >( tab_count ), 30.0f, 56.0f ) );
+		const auto cells_y = col_y + 8.0f;
+
+		for ( auto i = 0; i < tab_count; ++i )
+		{
+			const auto cell = xui::rect{ col_x, cells_y + cell_h * static_cast< float >( i ), col_w, cell_h };
+			const auto hovered = input.in_rect( cell );
+			const auto is_active = this->m_tab == i && !this->m_unload_open;
+
+			if ( !this->m_search_open && hovered && input.mouse_clicked && !xui::ctx( ).overlay_blocking( ) )
+			{
+				this->m_tab = i;
+				this->m_subtab = 0;
+				this->m_unload_open = false;
+			}
+
+			if ( is_active )
+			{
+				dl.rect_filled( cell.x, cell.y, cell.w + 2.0f, cell.h, xui::ctx( ).style.window_bg.alpha( 255 ) );
+				dl.rect_filled( cell.x, cell.y, cell.w + 2.0f, 1.0f, xdraw::color{ 0, 0, 0, 255 } );
+				dl.rect_filled( cell.x, cell.y + 1.0f, cell.w + 2.0f, 1.0f, xdraw::color{ 44, 44, 44, 255 } );
+				dl.rect_filled( cell.x, cell.y + cell.h - 2.0f, cell.w + 2.0f, 1.0f, xdraw::color{ 44, 44, 44, 255 } );
+				dl.rect_filled( cell.x, cell.y + cell.h - 1.0f, cell.w + 2.0f, 1.0f, xdraw::color{ 0, 0, 0, 255 } );
+			}
+
+			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "legacy_tab_hover" ) + i, hovered ? 1.0f : 0.0f, 14.0f );
+			auto icon_col = xui::lerp( xdraw::color{ 90, 90, 90, 255 }, xdraw::color{ 160, 160, 160, 255 }, hover_anim );
+			if ( is_active )
+			{
+				icon_col = xdraw::color{ 215, 215, 215, 255 };
+			}
+
+			const auto& tex = this->m_textures.tabs[ i ];
+			const auto iw = static_cast< float >( tex.width );
+			const auto ih = static_cast< float >( tex.height );
+			dl.image( std::floor( cell.x + ( cell.w - iw ) * 0.5f ), std::floor( cell.y + ( cell.h - ih ) * 0.5f ), iw, ih, tex.resource.Get( ), icon_col );
+		}
+
+		// Avatar at the foot of the column; it opens the unload page, as before.
+		const auto avatar = xui::rect{ std::floor( col_x + ( col_w - avatar_size ) * 0.5f ), std::floor( col_y + h - avatar_size - 8.0f ), avatar_size, avatar_size };
+		const auto avatar_hovered = input.in_rect( avatar );
+
+		if ( !this->m_search_open && avatar_hovered && input.mouse_clicked && !xui::ctx( ).overlay_blocking( ) )
+		{
+			this->m_unload_open = !this->m_unload_open;
+		}
+
+		this->try_load_user_avatar( );
+		if ( this->m_textures.user.resource )
+		{
+			dl.image( avatar.x, avatar.y, avatar.w, avatar.h, this->m_textures.user.resource.Get( ) );
+		}
+		else
+		{
+			dl.rect_filled( avatar.x, avatar.y, avatar.w, avatar.h, xdraw::color{ 30, 30, 30, 255 } );
+		}
+
+		const auto ring = this->m_unload_open ? tokens::col_accent : ( avatar_hovered ? xdraw::color{ 90, 90, 90, 255 } : xdraw::color{ 0, 0, 0, 255 } );
+		dl.rect_filled( avatar.x - 1.0f, avatar.y - 1.0f, avatar.w + 2.0f, 1.0f, ring );
+		dl.rect_filled( avatar.x - 1.0f, avatar.y + avatar.h, avatar.w + 2.0f, 1.0f, ring );
+		dl.rect_filled( avatar.x - 1.0f, avatar.y, 1.0f, avatar.h, ring );
+		dl.rect_filled( avatar.x + avatar.w, avatar.y, 1.0f, avatar.h, ring );
 	}
 
 	void menu::try_load_user_avatar( )
@@ -1721,6 +1861,91 @@ namespace rendering {
 		style.text_input_rounding = 6.0f * r;
 
 		xui::anim::set_speed_scale( std::clamp( gui.anim_speed.value, 0.2f, 3.0f ) );
+
+		// Widget sizes are written here in both branches because the style is mutated in place -- switching the
+		// skin off has to put the glass sizes back.
+		style.legacy = gui.legacy_skin.value;
+		if ( !style.legacy )
+		{
+			tokens::sidebar_w = 42.0f;
+			style.checkbox_size = 16.0f;
+			style.slider_h = 7.0f;
+			style.combo_h = 20.0f;
+			style.combo_item_h = 22.0f;
+			style.keybind_h = 22.0f;
+			style.text_input_h = 24.0f;
+			return;
+		}
+
+		// Legacy skin: fixed greys, the theme's accent, square corners, no blur. The palette pickers still set the
+		// accent; the greys are the skin.
+		const xdraw::color k_text{ 205, 205, 205, 255 };
+		const xdraw::color k_text_dim{ 140, 140, 140, 255 };
+		const xdraw::color k_black{ 0, 0, 0, 255 };
+		const xdraw::color k_face{ 30, 30, 30, 255 };
+		const xdraw::color k_popup{ 27, 27, 27, 255 };
+
+		tokens::sidebar_w = 64.0f;
+		tokens::col_dark = xdraw::color{ 12, 12, 12, 255 };
+		tokens::col_card = xdraw::color{ 23, 23, 23, 255 };
+		tokens::col_elevated = xdraw::color{ 30, 30, 30, 255 };
+		tokens::col_text = k_text;
+		tokens::col_text_dim = k_text_dim;
+		tokens::card_rounding = 0.0f;
+		tokens::btn_rounding = 0.0f;
+
+		style.window_blur = false;
+		style.accent_gradient = false;
+		style.window_bg = xdraw::color{ 17, 17, 17, 255 };
+		style.window_border = k_black;
+		style.child_bg = xdraw::color{ 23, 23, 23, 255 };
+		style.child_border = xdraw::color{ 44, 44, 44, 255 };
+		style.border_thickness = 1.0f;
+
+		style.checkbox_size = 8.0f;
+		style.slider_h = 6.0f;
+		style.combo_h = 20.0f;
+		style.combo_item_h = 20.0f;
+		style.keybind_h = 18.0f;
+		style.text_input_h = 20.0f;
+
+		style.checkbox_bg = k_face;
+		style.button_bg = k_face;
+		style.button_hovered = xdraw::color{ 38, 38, 38, 255 };
+		style.button_border = k_black;
+		style.keybind_bg = k_face;
+		style.keybind_border = k_black;
+		style.combo_bg = k_face;
+		style.combo_border = k_black;
+		style.combo_hovered = xdraw::color{ 38, 38, 38, 255 };
+		style.combo_arrow = k_text_dim;
+		style.combo_popup_bg = k_popup;
+		style.combo_popup_border = k_black;
+		style.combo_popup_item_hovered = xdraw::color{ 38, 38, 38, 255 };
+		style.combo_popup_item_selected = tokens::col_accent.alpha( 40 );
+		style.popup_bg = k_popup;
+		style.popup_border = k_black;
+		style.picker_bg = k_face;
+		style.picker_border = k_black;
+		style.picker_popup_bg = k_popup;
+		style.picker_popup_border = k_black;
+		style.text_input_bg = xdraw::color{ 20, 20, 20, 255 };
+		style.text_input_border = k_black;
+		style.separator = xdraw::color{ 44, 44, 44, 255 };
+		style.text = k_text;
+		style.text_dim = k_text_dim;
+
+		style.rounding = 0.0f;
+		style.checkbox_rounding = 0.0f;
+		style.slider_rounding = 0.0f;
+		style.button_rounding = 0.0f;
+		style.keybind_rounding = 0.0f;
+		style.combo_rounding = 0.0f;
+		style.popup_rounding = 0.0f;
+		style.combo_popup_rounding = 0.0f;
+		style.picker_popup_rounding = 0.0f;
+		style.color_swatch_rounding = 0.0f;
+		style.text_input_rounding = 0.0f;
 	}
 
 	void menu::draw_top_bar( float w )
@@ -1743,8 +1968,25 @@ namespace rendering {
 		const auto subtabs_w = w - util_w - tokens::gap;
 		const auto btn_w = ( subtabs_w - inner_pad * 2.0f ) / static_cast< float >( subtab_count );
 
-		dl.rect_filled( content_x, bar_y, subtabs_w, tokens::subtab_bar_h, tokens::col_card, xdraw::corner_radius{ tokens::card_rounding } );
-		dl.rect_filled( content_x + subtabs_w + tokens::gap, bar_y, util_w, tokens::subtab_bar_h, tokens::col_card, xdraw::corner_radius{ tokens::card_rounding } );
+		const auto legacy = settings::g_gui.legacy_skin.value;
+
+		// Legacy: the two strips are drawn like group boxes -- flat plate, black edge, grey line inside it.
+		const auto panel = [ & ]( float px, float py, float pw, float ph )
+			{
+				if ( !legacy )
+				{
+					dl.rect_filled( px, py, pw, ph, tokens::col_card, xdraw::corner_radius{ tokens::card_rounding } );
+					return;
+				}
+
+				px = std::floor( px ); py = std::floor( py ); pw = std::floor( pw ); ph = std::floor( ph );
+				dl.rect_filled( px, py, pw, ph, tokens::col_card );
+				dl.rect( px + 0.5f, py + 0.5f, pw - 1.0f, ph - 1.0f, xdraw::color{ 0, 0, 0, 255 }, 1.0f, false );
+				dl.rect( px + 1.5f, py + 1.5f, pw - 3.0f, ph - 3.0f, xdraw::color{ 44, 44, 44, 255 }, 1.0f, false );
+			};
+
+		panel( content_x, bar_y, subtabs_w, tokens::subtab_bar_h );
+		panel( content_x + subtabs_w + tokens::gap, bar_y, util_w, tokens::subtab_bar_h );
 
 		const auto by = bar_y + ( tokens::subtab_bar_h - subtab_h ) * 0.5f;
 		const auto pill_target_x = content_x + inner_pad + btn_w * static_cast< float >( this->m_subtab );
@@ -1762,7 +2004,15 @@ namespace rendering {
 
 		if ( subtab_count > 0 )
 		{
-			xui::accent_fill( dl, this->m_subtab_pill_x, by, btn_w, subtab_h, tokens::col_accent, tokens::btn_rounding );
+			if ( legacy )
+			{
+				// An accent underline under the active subtab instead of a filled pill.
+				dl.rect_filled( std::floor( this->m_subtab_pill_x + 6.0f ), std::floor( by + subtab_h - 3.0f ), std::floor( btn_w - 12.0f ), 2.0f, tokens::col_accent );
+			}
+			else
+			{
+				xui::accent_fill( dl, this->m_subtab_pill_x, by, btn_w, subtab_h, tokens::col_accent, tokens::btn_rounding );
+			}
 		}
 
 		for ( auto i = 0; i < subtab_count; ++i )
@@ -1781,7 +2031,7 @@ namespace rendering {
 			const auto active_anim = xui::anim::lerp( xui::fnv1a( "subtab_text" ) + i, is_active ? 1.0f : 0.0f, 12.0f );
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "subtab_hover" ) + i, hovered && !is_active ? 1.0f : 0.0f, 14.0f );
 
-			if ( hover_anim > 0.01f )
+			if ( hover_anim > 0.01f && !legacy )
 			{
 				dl.rect_filled( btn.x, btn.y, btn.w, btn.h, tokens::col_elevated.alpha( static_cast< std::uint8_t >( 90.0f * hover_anim ) ), xdraw::corner_radius{ tokens::btn_rounding } );
 			}
@@ -1790,8 +2040,14 @@ namespace rendering {
 			const auto tx = std::floor( btn.x + ( btn.w - tw ) * 0.5f );
 			const auto ty = std::floor( btn.y + ( btn.h - th ) * 0.5f );
 
-			auto text_col = xui::lerp( tokens::col_text_dim, tokens::col_dark, active_anim );
-			text_col = xui::lerp( text_col, tokens::col_text, hover_anim * 0.35f );
+			// Glass: dark text on the accent pill. Legacy: grey text, lighter on hover, the active one in white.
+			auto text_col = legacy
+				? xui::lerp( xui::lerp( tokens::col_text_dim, tokens::col_text, hover_anim ), xdraw::color{ 235, 235, 235, 255 }, active_anim )
+				: xui::lerp( tokens::col_text_dim, tokens::col_dark, active_anim );
+			if ( !legacy )
+			{
+				text_col = xui::lerp( text_col, tokens::col_text, hover_anim * 0.35f );
+			}
 			dl.text( tx, ty, def.names[ i ], text_col );
 		}
 

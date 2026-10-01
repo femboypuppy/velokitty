@@ -310,7 +310,35 @@ namespace memory {
 	}
 
 
+	static std::uintptr_t resolve_pattern_uncached (std::string_view pattern);
+
+	/// PATTERN caches per call site, so a second call site that runs for the first time after its function has been
+	/// hooked scans the detour's jump instead of the original prologue and comes back empty. That is what happened
+	/// to get_inaccuracy once its hook went in: the cheat's own inaccuracy read returned 0 for the whole session
+	/// and every no-spread shot was solved for the wrong spread. Caching per pattern means the address found before
+	/// the hook was installed is the one every later caller gets.
 	std::uintptr_t resolve_pattern (std::string_view pattern) {
+		static std::mutex cache_mutex {};
+		static std::unordered_map<std::string, std::uintptr_t> cache {};
+
+		const std::string key {pattern};
+		{
+			std::lock_guard lock (cache_mutex);
+			if (const auto it = cache.find (key); it != cache.end ()) {
+				return it->second;
+			}
+		}
+
+		const auto result = resolve_pattern_uncached (pattern);
+		if (result) {
+			std::lock_guard lock (cache_mutex);
+			cache.emplace (key, result);
+		}
+
+		return result;
+	}
+
+	static std::uintptr_t resolve_pattern_uncached (std::string_view pattern) {
 		// parse "module.dll:pattern" format
 		const auto colon = pattern.find (':');
 		if (colon == std::string_view::npos) {

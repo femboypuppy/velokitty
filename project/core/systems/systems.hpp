@@ -469,6 +469,8 @@ namespace systems {
 			std::byte pad1[ 0x4b ];
 		};
 
+		static_assert( offsetof( filter, v1 ) == 0x10 );
+		static_assert( offsetof( filter, v6 ) == 0x39 );
 		static_assert( offsetof( trace_data, elements ) == 0x18 );
 		static_assert( offsetof( trace_data, num_hits ) == 0x1c20 );
 		static_assert( offsetof( trace_data, hit_array_pointer ) == 0x1c28 );
@@ -497,6 +499,9 @@ namespace systems {
 		[[nodiscard]] result trace_to_entity( const math::vector3& start, const math::vector3& end, std::uintptr_t target_entity, const filter& filter ) const;
 		[[nodiscard]] filter make_filter( std::uintptr_t skip_entity, std::uintptr_t mask, std::uint8_t layer, int type ) const;
 		[[nodiscard]] filter make_filter( std::uintptr_t skip_entity, std::uintptr_t mask, std::uint8_t layer ) const;
+		/// The filter the game's own bullet trace uses (0x888976): the usual 0x1C300B / layer 3 / type 15 filter,
+		/// plus the two changes the fire code makes to it before tracing.
+		[[nodiscard]] filter make_bullet_filter( std::uintptr_t skip_entity ) const;
 		[[nodiscard]] player_movement_filter make_player_movement_filter( std::uintptr_t entity, std::uintptr_t mask, std::uint8_t collision_group = 11 ) const;
 		[[nodiscard]] tracing::result trace_player_bbox( const math::vector3& start, const math::vector3& end, const bbox_collision& bbox, const player_movement_filter& filter, std::uintptr_t movement_services ) const;
 

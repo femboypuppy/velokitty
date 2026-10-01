@@ -39,6 +39,7 @@ namespace patterns {
 	extern const ::protection::addresses::address_t& game_scene_node_set_skeleton;
 	extern const ::protection::addresses::address_t& game_trace_manager;
 	extern const ::protection::addresses::address_t& generate_primitives;
+	extern const ::protection::addresses::address_t& aim_punch_at_time;
 	extern const ::protection::addresses::address_t& get_aim_punch;
 	extern const ::protection::addresses::address_t& get_bone_index;
 	extern const ::protection::addresses::address_t& get_glow_color;

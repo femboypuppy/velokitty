@@ -1,6 +1,7 @@
 #include <pch/pch.hpp>
 
 #include <cstdio>
+#include <TlHelp32.h>
 
 #include <utilities/logging/logging.hpp>
 #include <utilities/addresses/addresses.hpp>
@@ -8,6 +9,7 @@
 #include <utilities/memory/memory.hpp>
 #include <utilities/threadpool/threadpool.hpp>
 #include <utilities/steam/steam.hpp>
+#include <utilities/unload.hpp>
 
 #include <core/hooks/hooks.hpp>
 #include <core/systems/systems.hpp>
@@ -523,7 +525,340 @@ namespace {
 		}
 	}
 
+	HMODULE g_module{};
+	std::atomic<bool> g_unload_requested{};
+
+	// Set once the unload thread has torn everything down and is about to free the module, so
+	// DLL_PROCESS_DETACH does not run the teardown a second time -- it calls into the game, and detach runs
+	// under the loader lock.
+	std::atomic<bool> g_torn_down{};
+
+	// The exception handlers are the one piece of teardown that is pure Win32, so both the unload thread and
+	// detach run it. Idempotent.
+	void remove_exception_handlers( )
+	{
+		if ( g_vectored_exception_handler )
+		{
+			RemoveVectoredExceptionHandler( g_vectored_exception_handler );
+			g_vectored_exception_handler = nullptr;
+		}
+
+		const auto previous_filter =
+			g_previous_exception_filter.exchange(
+				nullptr,
+				std::memory_order_acq_rel );
+		const auto current_filter =
+			SetUnhandledExceptionFilter( previous_filter );
+		if ( current_filter != diag_unhandled_exception_filter )
+		{
+			SetUnhandledExceptionFilter( current_filter );
+		}
+	}
+
+	struct thread_basic_information
+	{
+		LONG exit_status;
+		void* teb_base;
+		void* process_id;
+		void* thread_id;
+		ULONG_PTR affinity_mask;
+		LONG priority;
+		LONG base_priority;
+	};
+
+	// Filled while a thread is suspended, so nothing that touches the heap or a lock may run in between.
+	// Static for exactly that reason -- a suspended thread can be holding the allocator's lock.
+	std::uintptr_t g_stack_words[ 0x2000 ]{};
+
+	[[nodiscard]] bool looks_like_return_address( std::uintptr_t value, std::uintptr_t base, std::size_t size )
+	{
+		if ( value < base + 8 || value >= base + size )
+		{
+			return false;
+		}
+
+		const auto* at = reinterpret_cast<const std::uint8_t*>( value );
+		return at[ -5 ] == 0xE8 || at[ -6 ] == 0xFF || at[ -2 ] == 0xFF || at[ -3 ] == 0xFF;
+	}
+
+	/// True while any other thread is executing inside the module or has a return address into it on its
+	/// stack. That is the condition FreeLibrary must not be called under: the thread would come back to
+	/// unmapped code. Also true when the check itself cannot be completed, because the safe answer to "I
+	/// do not know" is to leave the module mapped.
+	[[nodiscard]] bool module_in_use( std::uintptr_t base, std::size_t size )
+	{
+		using nt_query_information_thread_fn = LONG( NTAPI* )( HANDLE, int, void*, ULONG, ULONG* );
+
+		const auto ntdll = GetModuleHandleW( L"ntdll.dll" );
+		const auto query = ntdll
+			? reinterpret_cast<nt_query_information_thread_fn>( GetProcAddress( ntdll, "NtQueryInformationThread" ) )
+			: nullptr;
+		if ( !query )
+		{
+			return true;
+		}
+
+		const auto snapshot = CreateToolhelp32Snapshot( TH32CS_SNAPTHREAD, 0 );
+		if ( snapshot == INVALID_HANDLE_VALUE )
+		{
+			return true;
+		}
+
+		const auto process_id = GetCurrentProcessId( );
+		const auto self = GetCurrentThreadId( );
+		auto in_use = false;
+
+		THREADENTRY32 entry{ sizeof( THREADENTRY32 ) };
+		for ( auto ok = Thread32First( snapshot, &entry ); ok && !in_use; ok = Thread32Next( snapshot, &entry ) )
+		{
+			if ( entry.th32OwnerProcessID != process_id || entry.th32ThreadID == self )
+			{
+				continue;
+			}
+
+			const auto thread = OpenThread( THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, entry.th32ThreadID );
+			if ( !thread )
+			{
+				continue;
+			}
+
+			thread_basic_information info{};
+			ULONG returned{};
+			std::uintptr_t stack_base{};
+			if ( query( thread, 0, &info, sizeof( info ), &returned ) >= 0 && info.teb_base )
+			{
+				stack_base = reinterpret_cast<std::uintptr_t>( reinterpret_cast<NT_TIB*>( info.teb_base )->StackBase );
+			}
+
+			CONTEXT context{};
+			context.ContextFlags = CONTEXT_CONTROL;
+			std::size_t words{};
+			auto got_context = false;
+
+			if ( SuspendThread( thread ) != static_cast<DWORD>( -1 ) )
+			{
+				got_context = GetThreadContext( thread, &context ) != FALSE;
+
+				const auto sp = static_cast<std::uintptr_t>( context.Rsp );
+				if ( got_context && stack_base > sp )
+				{
+					const auto bytes = std::min<std::size_t>( stack_base - sp, sizeof( g_stack_words ) );
+					std::memcpy( g_stack_words, reinterpret_cast<const void*>( sp ), bytes );
+					words = bytes / sizeof( std::uintptr_t );
+				}
+
+				ResumeThread( thread );
+			}
+
+			CloseHandle( thread );
+
+			if ( got_context && context.Rip >= base && context.Rip < base + size )
+			{
+				in_use = true;
+				break;
+			}
+
+			for ( std::size_t i = 0; i < words; ++i )
+			{
+				if ( looks_like_return_address( g_stack_words[ i ], base, size ) )
+				{
+					in_use = true;
+					break;
+				}
+			}
+		}
+
+		CloseHandle( snapshot );
+		return in_use;
+	}
+
+	// Terminates the module's static objects -- the same call DLL_PROCESS_DETACH makes on a development
+	// build. On its own function so a destructor that faults costs the cleanup, not the game.
+	void run_crt_terminators( HMODULE module_handle )
+	{
+		__try
+		{
+			_CRT_INIT( module_handle, DLL_PROCESS_DETACH, nullptr );
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
+		}
+	}
+
+	// How long the game gets to leave our code after the hooks come off before unload gives up and leaves the
+	// module mapped and inert. Nothing about unload is time critical, and a stuck thread is the one case
+	// where freeing the module would take the game down with it.
+	constexpr DWORD k_unload_drain_timeout_ms{ 10000 };
+	constexpr DWORD k_unload_drain_poll_ms{ 200 };
+
+	[[nodiscard]] bool teardown_and_drain( )
+	{
+		diag::exception_scope unload_scope{ "unload" };
+
+		// Hands the mouse back to the game if the menu had grabbed it, which it has: the page that starts
+		// unload is only reachable with the menu open.
+		diag::guard( "unload: menu", [ ] { rendering::g_menu.shutdown( ); } );
+		diag::guard( "unload: events", [ ] { systems::events::shutdown( ); } );
+
+		// Hooks first, resources second: anything the game calls into us for has to stop before what it uses
+		// is released. Every hook is reset through the registry, so none can be missed. Trampolines are kept
+		// alive across the reset; a thread that was already inside a detour still returns through one.
+		hooking::manager::retain_trampolines( true );
+		hooking::manager::reset_all( );
+		diag::step( "unload: hooks removed" );
+
+		const auto module_base = reinterpret_cast<std::uintptr_t>( g_module );
+		const auto module_size = static_cast<std::size_t>(
+			reinterpret_cast<const IMAGE_NT_HEADERS*>(
+				module_base + reinterpret_cast<const IMAGE_DOS_HEADER*>( module_base )->e_lfanew )->OptionalHeader.SizeOfImage );
+
+		auto waited{ 0ul };
+		while ( module_in_use( module_base, module_size ) )
+		{
+			if ( waited >= k_unload_drain_timeout_ms )
+			{
+				diag::write( diag::level::warning, "unload: a thread is still inside the module; leaving it mapped" );
+				return false;
+			}
+
+			Sleep( k_unload_drain_poll_ms );
+			waited += k_unload_drain_poll_ms;
+		}
+
+		diag::writef( diag::level::info, "unload: module idle after %lu ms", waited );
+
+		diag::guard( "unload: chams", [ ]
+		{
+			features::esp::player::g_chams.bt( ).shutdown( );
+			features::esp::player::g_chams.os( ).shutdown( );
+		} );
+		diag::guard( "unload: weather", [ ] { features::world::g_weather.release( ); } );
+		diag::guard( "unload: dlight", [ ] { features::misc::g_dlight.on_level_shutdown( ); } );
+		diag::guard( "unload: material clones", [ ] { systems::materials::clear_clones( ); } );
+		diag::guard( "unload: renderer", [ ] { rendering::g_context.shutdown( ); } );
+
+		hooking::manager::release_retained( );
+		return true;
+	}
+
+	/// How many LoadLibrary references the loader holds on this module, or 0 when it cannot be read.
+	///
+	/// Injecting the same path again does not re-run startup, it only adds a reference, so a session that
+	/// was injected three times needs three frees before the image leaves the address space; a single
+	/// FreeLibraryAndExitThread left it mapped and inert. The count lives in the loader's dependency-graph
+	/// node (LDR_DATA_TABLE_ENTRY +0x98, LDR_DDAG_NODE +0x18 on x64 Windows 10/11). Those are undocumented
+	/// offsets, so the result is sanity-checked and anything implausible is reported as unknown, which
+	/// falls back to the single free.
+	[[nodiscard]] ULONG loader_reference_count( HMODULE module_handle )
+	{
+		ULONG count{};
+
+		__try
+		{
+			const auto* peb = reinterpret_cast<const std::uint8_t*>( __readgsqword( 0x60 ) );
+			const auto* ldr = *reinterpret_cast<const std::uint8_t* const*>( peb + 0x18 );
+			const auto* head = reinterpret_cast<const LIST_ENTRY*>( ldr + 0x10 );
+
+			auto guard_steps{ 0 };
+			for ( auto* link = head->Flink; link != head && guard_steps < 4096; link = link->Flink, ++guard_steps )
+			{
+				const auto* entry = reinterpret_cast<const std::uint8_t*>( link );
+				if ( *reinterpret_cast<void* const*>( entry + 0x30 ) != module_handle )
+				{
+					continue;
+				}
+
+				const auto* node = *reinterpret_cast<const std::uint8_t* const*>( entry + 0x98 );
+				if ( node )
+				{
+					count = *reinterpret_cast<const ULONG*>( node + 0x18 );
+				}
+
+				break;
+			}
+		}
+		__except ( EXCEPTION_EXECUTE_HANDLER )
+		{
+			count = 0;
+		}
+
+		return ( count >= 1 && count <= 64 ) ? count : 0;
+	}
+
+	DWORD WINAPI unload_thread_impl( LPVOID param )
+	{
+		const auto module_handle = static_cast<HMODULE>( param );
+
+		diag::step( "stage: unload begin" );
+
+		// A function of its own so the scope guard inside it is gone before FreeLibraryAndExitThread, which
+		// never returns and so would never run a destructor.
+		if ( !teardown_and_drain( ) )
+		{
+			g_unload_requested.store( false, std::memory_order_release );
+			return 0;
+		}
+
+		diag::step( "stage: unload done" );
+
+		const auto references = loader_reference_count( module_handle );
+		diag::writef( diag::level::info, "unload: loader holds %lu reference(s) on the module", references );
+
+		remove_exception_handlers( );
+		diag::shutdown( );
+		g_torn_down.store( true, std::memory_order_release );
+		run_crt_terminators( module_handle );
+
+		// Every reference but one is dropped here, where this thread's own code is still safely mapped; the
+		// last one goes with FreeLibraryAndExitThread, and detach runs then. Under a manual map the module
+		// is not in the loader's list, so the frees are no-ops and the (now inert) image stays resident.
+		for ( ULONG released{ 1 }; released < references; ++released )
+		{
+			FreeLibrary( module_handle );
+		}
+
+		FreeLibraryAndExitThread( module_handle, 0 );
+	}
+
+	DWORD WINAPI unload_thread( LPVOID param )
+	{
+		__try
+		{
+			return unload_thread_impl( param );
+		}
+		__except ( diag_exception_filter( GetExceptionInformation( ) ) )
+		{
+			return 0;
+		}
+	}
 } // namespace
+
+namespace unload {
+
+	void request( )
+	{
+		if ( !g_module || g_unload_requested.exchange( true, std::memory_order_acq_rel ) )
+		{
+			return;
+		}
+
+		const auto thread = CreateThread( nullptr, 0, unload_thread, g_module, 0, nullptr );
+		if ( !thread )
+		{
+			g_unload_requested.store( false, std::memory_order_release );
+			diag::writef( diag::level::error, "failed to create unload thread; win32_error=%lu", GetLastError( ) );
+			return;
+		}
+
+		CloseHandle( thread );
+	}
+
+	bool requested( )
+	{
+		return g_unload_requested.load( std::memory_order_acquire );
+	}
+
+} // namespace unload
 
 extern "C" int __stdcall entry( HMODULE module_handle, DWORD reason, LPVOID reserved )
 {
@@ -532,6 +867,7 @@ extern "C" int __stdcall entry( HMODULE module_handle, DWORD reason, LPVOID rese
 		_CRT_INIT( module_handle, reason, reserved );
 		DisableThreadLibraryCalls( module_handle );
 
+		g_module = module_handle;
 		diag::set_module( module_handle );
 		diag::step( "stage: dll attach" );
 #if defined( DEV )
@@ -561,48 +897,41 @@ extern "C" int __stdcall entry( HMODULE module_handle, DWORD reason, LPVOID rese
 		// is unconditionally safe here: pure Win32, no call back into the game. Leaving them installed
 		// while the module's pages go away means any later fault -- and ExitProcess produces them -- lands
 		// in freed code with our handler at the front of the chain.
-		if ( g_vectored_exception_handler )
-		{
-			RemoveVectoredExceptionHandler( g_vectored_exception_handler );
-			g_vectored_exception_handler = nullptr;
-		}
+		remove_exception_handlers( );
 
-		const auto previous_filter =
-			g_previous_exception_filter.exchange(
-				nullptr,
-				std::memory_order_acq_rel );
-		const auto current_filter =
-			SetUnhandledExceptionFilter( previous_filter );
-		if ( current_filter != diag_unhandled_exception_filter )
-		{
-			SetUnhandledExceptionFilter( current_filter );
-		}
 
 		// Everything below calls back into the game. Nothing unloads this module while the process runs,
 		// so detach only ever fires from ExitProcess -- where the loader has already suspended every other
 		// thread, possibly mid-way through the scene lock we would need. Feature state is released from
 		// level_shutdown instead, which runs on the game thread with the world still intact.
 #if defined( DEV )
-		g_terminate_process_hook.reset( );
-		g_minidump_hook.reset( );
+		if ( !g_torn_down.load( std::memory_order_acquire ) )
+		{
+			g_terminate_process_hook.reset( );
+			g_minidump_hook.reset( );
 
-		features::esp::player::g_chams.bt( ).shutdown( );
-		features::esp::player::g_chams.os( ).shutdown( );
+			features::esp::player::g_chams.bt( ).shutdown( );
+			features::esp::player::g_chams.os( ).shutdown( );
 
-		features::world::g_weather.release( );
-		rendering::g_menu.shutdown( );
+			features::world::g_weather.release( );
+			rendering::g_menu.shutdown( );
 
-		systems::events::shutdown( );
-		hooks::utility::shutdown( );
-		hooks::cheat::shutdown( );
-		CoUninitialize( );
+			systems::events::shutdown( );
+			hooks::utility::shutdown( );
+			hooks::cheat::shutdown( );
+			CoUninitialize( );
+		}
 #endif
 
-		diag::shutdown( );
+		// The unload thread already ran both of these, in that order, before it freed the module.
+		if ( !g_torn_down.load( std::memory_order_acquire ) )
+		{
+			diag::shutdown( );
 
 #if defined( DEV )
-		_CRT_INIT( module_handle, reason, reserved );
+			_CRT_INIT( module_handle, reason, reserved );
 #endif
+		}
 	}
 
 	return 1;

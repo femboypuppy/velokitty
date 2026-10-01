@@ -54,6 +54,7 @@ namespace rendering {
     private:
 		bool draw_intro( );
         void draw_side_bar( float h );
+        void draw_legacy_tabs( float h );
         void draw_top_bar( float w );
         void try_load_user_avatar( );
         void apply_theme_preset( int preset ) const;
@@ -71,6 +72,7 @@ namespace rendering {
         void draw_misc( float group_w ) const;
         void draw_config( float group_w );
         void draw_theme( float group_w ) const;
+        void draw_unload( );
 
         /// A transparent scroll region covering the page body, closed on scope exit.
         ///
@@ -141,6 +143,10 @@ namespace rendering {
         float m_body_y{};
         float m_body_w{};
         float m_body_h{};
+
+        /// The unload page, opened from the avatar in the sidebar. It is a page of its own rather than a
+        /// tab, so it never appears in the tab strip or in search.
+        bool m_unload_open{};
 
         int m_tab{};
         int m_subtab{};
@@ -271,6 +277,10 @@ namespace rendering {
 		family_t inter_medium{};
 		family_t inter_bold{};
 		family_t smallest_pixel7{};
+
+		/// The legacy skin's menu font: Windows' own Verdana at 12px, Tahoma if Verdana is missing, null if
+		/// neither loads (the menu then keeps the default font).
+		xdraw::font* legacy_menu{};
 
 	private:
 		void load_family( family_t& family, std::span<const std::byte> data, const std::array<float, static_cast< std::size_t >( size::count )>& sizes );

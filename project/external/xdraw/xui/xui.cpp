@@ -1748,6 +1748,46 @@ namespace xui {
 		return feed_wndproc( get_ctx( ).input, msg, wp, lp );
 	}
 
+	namespace legacy_skin {
+
+		constexpr xdraw::color k_black{ 0, 0, 0, 255 };
+
+		[[nodiscard]] xdraw::color with_alpha( xdraw::color c, float mult )
+		{
+			return c.alpha( static_cast< std::uint8_t >( static_cast< float >( c.a ) * std::clamp( mult, 0.0f, 1.0f ) ) );
+		}
+
+		/// One-pixel outline built from filled rects. An anti-aliased 1px line at an integer coordinate straddles
+		/// two pixels and reads as a grey smear; the legacy look depends on these edges being hard.
+		void outline( xdraw::draw_list& dl, float x, float y, float w, float h, xdraw::color col )
+		{
+			dl.rect_filled( x, y, w, 1.0f, col );
+			dl.rect_filled( x, y + h - 1.0f, w, 1.0f, col );
+			dl.rect_filled( x, y + 1.0f, 1.0f, h - 2.0f, col );
+			dl.rect_filled( x + w - 1.0f, y + 1.0f, 1.0f, h - 2.0f, col );
+		}
+
+		/// A control face: top-to-bottom gradient inside a black outline.
+		void face( xdraw::draw_list& dl, float x, float y, float w, float h, xdraw::color top, xdraw::color bottom, float alpha = 1.0f )
+		{
+			x = std::floorf( x ); y = std::floorf( y ); w = std::floorf( w ); h = std::floorf( h );
+			dl.rect_filled_gradient( x, y, w, h, with_alpha( top, alpha ), with_alpha( top, alpha ), with_alpha( bottom, alpha ), with_alpha( bottom, alpha ) );
+			outline( dl, x, y, w, h, with_alpha( k_black, alpha ) );
+		}
+
+		/// The accent a third of the way along the hue wheel in either direction -- the strip across the top of
+		/// the window runs left -> accent -> right, so it follows whatever accent the theme picks.
+		[[nodiscard]] xdraw::color hue_shift( xdraw::color c, float degrees )
+		{
+			auto h = rgb_to_hsv( c );
+			h.h = std::fmod( h.h + degrees + 360.0f, 360.0f );
+			h.s = std::max( h.s, 0.45f );
+			h.v = std::max( h.v, 0.75f );
+			return hsv_to_rgb( h );
+		}
+
+	} // namespace legacy_skin
+
 	bool begin_window( std::string_view title, float& x, float& y, float& w, float& h, bool resizable, float min_w, float min_h, float reveal )
 	{
 		auto& c = get_ctx( );
@@ -1810,6 +1850,37 @@ namespace xui {
 		window_bg.a = static_cast< std::uint8_t >( window_bg.a * reveal_clamped );
 		auto window_border = s.window_border;
 		window_border.a = static_cast< std::uint8_t >( window_border.a * reveal_clamped );
+
+		if ( s.legacy )
+		{
+			// Layered frame: black, light edge, a 3px band, light edge again, then the content plate. An accent
+			// strip two pixels tall runs along the top of the content, the lower pixel at half brightness.
+			const auto a = reveal_clamped;
+			const auto fx = std::floorf( draw_x );
+			const auto fy = std::floorf( draw_y );
+			const auto fw = std::floorf( draw_w );
+			const auto fh = std::floorf( draw_h );
+			const auto shade = [ a ]( std::uint8_t v ) { return legacy_skin::with_alpha( xdraw::color{ v, v, v, 255 }, a ); };
+
+			dl.rect_filled( fx, fy, fw, fh, shade( 0 ) );
+			dl.rect_filled( fx + 1.0f, fy + 1.0f, fw - 2.0f, fh - 2.0f, shade( 60 ) );
+			dl.rect_filled( fx + 2.0f, fy + 2.0f, fw - 4.0f, fh - 4.0f, shade( 40 ) );
+			dl.rect_filled( fx + 5.0f, fy + 5.0f, fw - 10.0f, fh - 10.0f, shade( 60 ) );
+			dl.rect_filled( fx + 6.0f, fy + 6.0f, fw - 12.0f, fh - 12.0f, legacy_skin::with_alpha( s.window_bg.alpha( 255 ), a ) );
+
+			const auto strip_w = std::floorf( ( fw - 12.0f ) * 0.5f );
+			const auto left = legacy_skin::with_alpha( legacy_skin::hue_shift( s.accent, -35.0f ), a );
+			const auto mid = legacy_skin::with_alpha( s.accent.alpha( 255 ), a );
+			const auto right = legacy_skin::with_alpha( legacy_skin::hue_shift( s.accent, 35.0f ), a );
+			dl.rect_filled_gradient( fx + 6.0f, fy + 6.0f, strip_w, 1.0f, left, mid, mid, left );
+			dl.rect_filled_gradient( fx + 6.0f + strip_w, fy + 6.0f, fw - 12.0f - strip_w, 1.0f, mid, right, right, mid );
+			dl.rect_filled_gradient( fx + 6.0f, fy + 7.0f, strip_w, 1.0f, darken( left, 0.5f ), darken( mid, 0.5f ), darken( mid, 0.5f ), darken( left, 0.5f ) );
+			dl.rect_filled_gradient( fx + 6.0f + strip_w, fy + 7.0f, fw - 12.0f - strip_w, 1.0f, darken( mid, 0.5f ), darken( right, 0.5f ), darken( right, 0.5f ), darken( mid, 0.5f ) );
+
+			dl.push_clip( draw_x, draw_y, draw_w, draw_h );
+			push_id( id );
+			return true;
+		}
 
 		if ( s.window_blur )
 		{
@@ -1947,8 +2018,12 @@ namespace xui {
 		window_state state{};
 		state.title = std::string( title );
 		state.bounds = rect{ abs.x, abs.y, abs.w - sb_inset, abs.h };
+		const auto [child_title, child_full] = parse_label( title );
+		const auto titled = s.legacy && !transparent && !child_title.empty( );
+
 		state.cursor_x = s.window_pad_x;
-		state.cursor_y = s.window_pad_y - scroll_y;
+		// A titled group box carries its name on the top edge; start the rows clear of it.
+		state.cursor_y = s.window_pad_y + ( titled ? 4.0f : 0.0f ) - scroll_y;
 		state.is_child = true;
 		state.group_id = id;
 		state.scrollable = scrollable;
@@ -1959,7 +2034,30 @@ namespace xui {
 
 		auto& dl = draw::current( );
 
-		if ( !transparent )
+		if ( !transparent && s.legacy )
+		{
+			// Group box: flat plate, black outline with a lighter line inside it, and the title sitting on the
+			// top edge with the lines cut away behind it.
+			const auto fx = std::floorf( abs.x );
+			const auto fy = std::floorf( abs.y );
+			const auto fw = std::floorf( abs.w );
+			const auto fh = std::floorf( abs.h );
+
+			dl.rect_filled( fx, fy, fw, fh, s.child_bg );
+			legacy_skin::outline( dl, fx, fy, fw, fh, legacy_skin::k_black );
+			legacy_skin::outline( dl, fx + 1.0f, fy + 1.0f, fw - 2.0f, fh - 2.0f, s.child_border );
+
+			if ( titled )
+			{
+				const auto [tw, th] = xdraw::measure_text( child_title );
+				const auto tx = fx + 12.0f;
+				const auto ty = std::floorf( fy - th * 0.5f );
+				dl.rect_filled( tx - 3.0f, fy, tw + 6.0f, 2.0f, s.child_bg );
+				dl.text( tx + 1.0f, ty + 1.0f, child_title, legacy_skin::k_black );
+				dl.text( tx, ty, child_title, s.text );
+			}
+		}
+		else if ( !transparent )
 		{
 			dl.rect_filled( abs.x, abs.y, abs.w, abs.h, s.child_bg, xdraw::corner_radius{ r } );
 
@@ -2316,10 +2414,18 @@ namespace xui {
 
 		auto& dl = draw::current( );
 
+		if ( s.legacy )
+		{
+			// Raised face that brightens on hover and inverts while held.
+			const auto lift = static_cast< std::uint8_t >( 8.0f * hover_anim );
+			const auto top = xdraw::color{ static_cast< std::uint8_t >( 35 + lift ), static_cast< std::uint8_t >( 35 + lift ), static_cast< std::uint8_t >( 35 + lift ), 255 };
+			const auto bottom = xdraw::color{ static_cast< std::uint8_t >( 25 + lift ), static_cast< std::uint8_t >( 25 + lift ), static_cast< std::uint8_t >( 25 + lift ), 255 };
+			legacy_skin::face( dl, abs.x, abs.y, abs.w, abs.h, held ? bottom : top, held ? top : bottom );
+		}
 		// A held button is not painted in the accent -- it is lerped *towards* it -- so accent_fill
 		// cannot be used here. Both stops get lerped by the same amount instead, which means the
 		// gradient grows in with the press rather than appearing at full strength.
-		if ( s.accent_gradient && active_anim > 0.01f )
+		else if ( s.accent_gradient && active_anim > 0.01f )
 		{
 			gradient_fill( dl, abs.x, abs.y, abs.w, abs.h, bg, lerp( bg_hover, s.accent_2, active_anim ), r );
 		}
@@ -2328,7 +2434,10 @@ namespace xui {
 			dl.rect_filled( abs.x, abs.y, abs.w, abs.h, bg, xdraw::corner_radius{ r } );
 		}
 
-		dl.rect( abs.x, abs.y, abs.w, abs.h, border, xdraw::corner_radius{ r } );
+		if ( !s.legacy )
+		{
+			dl.rect( abs.x, abs.y, abs.w, abs.h, border, xdraw::corner_radius{ r } );
+		}
 
 		if ( !display.empty( ) )
 		{
@@ -2355,6 +2464,18 @@ namespace xui {
 			const style& st,
 			float alpha_mult = 1.0f )
 		{
+			if ( st.legacy )
+			{
+				// Small bevelled square: grey when off, the accent when on, blended through the toggle animation.
+				const auto top = lerp( xdraw::color{ 75, 75, 75, 255 }, st.checkbox_mark.alpha( 255 ), t );
+				const auto bottom = lerp( xdraw::color{ 48, 48, 48, 255 }, darken( st.checkbox_mark.alpha( 255 ), 0.62f ), t );
+				const auto fx = std::floorf( x );
+				const auto fy = std::floorf( y );
+				dl.rect_filled_gradient( fx, fy, size, size, legacy_skin::with_alpha( top, alpha_mult ), legacy_skin::with_alpha( top, alpha_mult ), legacy_skin::with_alpha( bottom, alpha_mult ), legacy_skin::with_alpha( bottom, alpha_mult ) );
+				legacy_skin::outline( dl, fx - 1.0f, fy - 1.0f, size + 2.0f, size + 2.0f, legacy_skin::with_alpha( legacy_skin::k_black, alpha_mult ) );
+				return;
+			}
+
 			auto bg = st.checkbox_bg;
 			bg.a = static_cast< std::uint8_t >( bg.a * alpha_mult );
 			dl.rect_filled( x, y, size, size, bg, xdraw::corner_radius{ st.checkbox_rounding } );
@@ -2374,6 +2495,26 @@ namespace xui {
 			float norm_pos,
 			const style& st )
 		{
+			if ( st.legacy )
+			{
+				// Recessed track with the filled part in the accent; the value is printed beside the label.
+				const auto fx = std::floorf( track_x );
+				const auto fy = std::floorf( track_y );
+				const auto fw = std::floorf( track_w );
+				const auto fh = std::floorf( track_h );
+				const auto fill = std::floorf( fw * std::clamp( norm_pos, 0.0f, 1.0f ) );
+
+				dl.rect_filled_gradient( fx, fy, fw, fh, xdraw::color{ 52, 52, 52, 255 }, xdraw::color{ 52, 52, 52, 255 }, xdraw::color{ 68, 68, 68, 255 }, xdraw::color{ 68, 68, 68, 255 } );
+				if ( fill >= 1.0f )
+				{
+					const auto top = st.slider_fill.alpha( 255 );
+					const auto bottom = darken( top, 0.62f );
+					dl.rect_filled_gradient( fx, fy, fill, fh, top, top, bottom, bottom );
+				}
+				legacy_skin::outline( dl, fx - 1.0f, fy - 1.0f, fw + 2.0f, fh + 2.0f, legacy_skin::k_black );
+				return;
+			}
+
 			constexpr auto thumb_r{ 4.0f };
 			const auto track_r = track_h * 0.5f;
 			const auto thumb_cx = track_x + std::clamp( norm_pos, 0.0f, 1.0f ) * track_w;
@@ -3739,8 +3880,18 @@ namespace xui {
 			dl.text( abs.x, abs.y, label_text, label_col );
 		}
 
-		dl.rect_filled( button_rect.x, button_rect.y, button_rect.w, button_rect.h, bg, xdraw::corner_radius{ r } );
-		dl.rect( button_rect.x, button_rect.y, button_rect.w, button_rect.h, border, xdraw::corner_radius{ r } );
+		if ( s.legacy )
+		{
+			const auto lift = static_cast< std::uint8_t >( 7.0f * hover_anim );
+			legacy_skin::face( dl, button_rect.x, button_rect.y, button_rect.w, button_rect.h,
+				xdraw::color{ static_cast< std::uint8_t >( 33 + lift ), static_cast< std::uint8_t >( 33 + lift ), static_cast< std::uint8_t >( 33 + lift ), 255 },
+				xdraw::color{ static_cast< std::uint8_t >( 26 + lift ), static_cast< std::uint8_t >( 26 + lift ), static_cast< std::uint8_t >( 26 + lift ), 255 } );
+		}
+		else
+		{
+			dl.rect_filled( button_rect.x, button_rect.y, button_rect.w, button_rect.h, bg, xdraw::corner_radius{ r } );
+			dl.rect( button_rect.x, button_rect.y, button_rect.w, button_rect.h, border, xdraw::corner_radius{ r } );
+		}
 
 		const auto current_text = ( current >= 0 && current < count ) ? items[ current ] : "";
 		const auto [tw, th] = xdraw::measure_text( current_text );
@@ -4115,8 +4266,18 @@ namespace xui {
 			dl.text( abs.x, abs.y, truncate( display, width ), mc_text_col );
 		}
 
-		dl.rect_filled( button_rect.x, button_rect.y, button_rect.w, button_rect.h, bg, xdraw::corner_radius{ r } );
-		dl.rect( button_rect.x, button_rect.y, button_rect.w, button_rect.h, border, xdraw::corner_radius{ r } );
+		if ( s.legacy )
+		{
+			const auto lift = static_cast< std::uint8_t >( 7.0f * hover_anim );
+			legacy_skin::face( dl, button_rect.x, button_rect.y, button_rect.w, button_rect.h,
+				xdraw::color{ static_cast< std::uint8_t >( 33 + lift ), static_cast< std::uint8_t >( 33 + lift ), static_cast< std::uint8_t >( 33 + lift ), 255 },
+				xdraw::color{ static_cast< std::uint8_t >( 26 + lift ), static_cast< std::uint8_t >( 26 + lift ), static_cast< std::uint8_t >( 26 + lift ), 255 } );
+		}
+		else
+		{
+			dl.rect_filled( button_rect.x, button_rect.y, button_rect.w, button_rect.h, bg, xdraw::corner_radius{ r } );
+			dl.rect( button_rect.x, button_rect.y, button_rect.w, button_rect.h, border, xdraw::corner_radius{ r } );
+		}
 
 		std::string_view display_text{ "none" };
 		std::string local_display;

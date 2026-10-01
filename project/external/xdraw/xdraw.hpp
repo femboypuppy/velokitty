@@ -235,7 +235,8 @@ namespace tokens {
 	inline xdraw::color col_card{ 17, 17, 17, 82 };
 	inline xdraw::color col_elevated{ 31, 31, 35, 118 };
 
-	constexpr auto sidebar_w{ 42.0f };
+	// Set per frame by the menu: the legacy skin's tab column is wider than the glass sidebar.
+	inline float sidebar_w{ 42.0f };
 	constexpr auto tab_icon_size{ 35.0f };
 	constexpr auto subtab_bar_h{ 35.0f };
 	constexpr auto gap{ 8.0f };

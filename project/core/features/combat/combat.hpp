@@ -185,7 +185,8 @@ namespace features::combat {
 			// cannot name a hitbox -- which is what a deflected penetrating bullet looks like --
 			// the result is attributed to this index instead of being thrown away. Pass -1 to
 			// keep the old behaviour of discarding those hits.
-			[[nodiscard]] bool run( const math::vector3& start, const math::vector3& end, const run_context& ctx, std::uintptr_t local_pawn, int local_team, result& out, int aimed_hitbox = -1 ) const;
+			// log_contacts writes every surface the trace touched to the log (used once per fired shot).
+			[[nodiscard]] bool run( const math::vector3& start, const math::vector3& end, const run_context& ctx, std::uintptr_t local_pawn, int local_team, result& out, int aimed_hitbox = -1, bool log_contacts = false ) const;
 			[[nodiscard]] bool can( const math::vector3& start, const math::vector3& direction, float& out_damage, const systems::local::snapshot& local ) const;
 			[[nodiscard]] float get_max_damage( int hitgroup, int target_armor, bool has_helmet, int target_team ) const;
 			[[nodiscard]] const weapon_data& get_weapon_data( ) const { return this->m_weapon_data; }
@@ -284,8 +285,24 @@ namespace features::combat {
 		[[nodiscard]] std::uint32_t get_spread_seed( const math::vector3& angles, int tick ) const;
 		[[nodiscard]] math::vector2 calculate_spread( int seed, float accuracy, float spread, float recoil_index, int item_def_idx, int num_bullets ) const;
 		[[nodiscard]] math::vector3 get_aim_punch( std::uintptr_t local_pawn ) const;
+		/// The aim punch the weapon fire code adds to the view angles for a shot fired at this tick and fraction.
+		/// get_aim_punch is the render-time value the camera uses; between shots they differ.
+		[[nodiscard]] math::vector3 get_aim_punch_at( std::uintptr_t local_pawn, int tick, float fraction ) const;
 		[[nodiscard]] float calculate_hitchance( const math::vector3& shoot_position, const math::vector3& aim_angle, const systems::hitboxes::entry& hitbox, const systems::bones::data& bone, float inaccuracy, float spread, int samples = 256 ) const;
-		[[nodiscard]] math::vector3 find_spread_correction( const math::vector3& aim_angle, int tick ) const;
+		struct spread_solution
+		{
+			/// The angles the bullet is fired along before spread is applied: view angles plus aim punch.
+			math::vector3 shot_angles{};
+			std::uint32_t seed{};
+			int evaluated{};
+			/// Degrees between the shot angles and the nearest edge of the half-degree cell the seed was hashed from.
+			float margin{};
+			bool valid{};
+		};
+
+		/// Shot angles whose own spread seed deflects the bullet exactly onto aim_angle. `punch` is only used to
+		/// keep the resulting view pitch inside what a command can carry.
+		[[nodiscard]] spread_solution find_spread_correction( const math::vector3& aim_angle, int tick, const math::vector3& punch ) const;
 		[[nodiscard]] math::vector3 get_eye_position( std::uintptr_t local_pawn ) const;
 		[[nodiscard]] math::vector3 get_shoot_position( ) const;
 		[[nodiscard]] math::vector3 get_interpolated_shoot_position( std::uintptr_t local_pawn, bool newest = false ) const;
@@ -347,6 +364,12 @@ namespace features::combat {
 			/// hide-shot, the grenade trajectory -- must not call this.
 			void adopt_movement_basis_yaw( float yaw ) { this->m_basis_yaw = yaw; }
 
+			/// True when this tick's command carries the anti-aim yaw. Read by the create_move diagnostics.
+			[[nodiscard]] bool is_active( ) const noexcept { return this->m_antiaim_active; }
+
+			/// Writes the movement-correction readout (the same numbers as the on-screen "movement debug" panel) to the log.
+			void log_debug( ) const;
+
 		private:
 			/// Why a given tick's correction did or did not happen. Drawn on screen behind the
 			/// "movement debug" toggle so a report of "it still goes the wrong way" comes with the
@@ -366,7 +389,10 @@ namespace features::combat {
 			/// Rotate every analog subtick step by the same delta as the scalar pair. The steps
 			/// carry deltas against the server's running m_flCmdForwardMove/m_flCmdLeftMove, so
 			/// each one is reconstructed to an absolute, rotated, then re-differenced.
-			void rotate_subtick_moves( proto::base_usercmd_pb* base, const math::vector2& start, float sin_delta, float cos_delta ) const;
+			///
+			/// Returns the total the chain ends on -- what the server's running forward/left values will be
+			/// once every step has been applied.
+			[[nodiscard]] math::vector2 rotate_subtick_moves( proto::base_usercmd_pb* base, const math::vector2& start, float sin_delta, float cos_delta ) const;
 
 			[[nodiscard]] float get_pitch( float view_pitch );
 			[[nodiscard]] float get_yaw( const math::vector3& view_angles, const systems::local::snapshot& local );
@@ -409,6 +435,13 @@ namespace features::combat {
 			/// purpose: they are our own output read straight back out of the protobuf, not a
 			/// re-derivation of it.
 			int m_corrected_tick{ -1 };
+
+			/// The value m_flCmdLeftMove takes when the player is holding A (IN_MOVELEFT). The rotation and the
+			/// button sync both depend on it. The default is the test strafer's convention (A is negative,
+			/// so positive leftmove is toward the right), and it is replaced once, from the first untouched
+			/// A or D press the game hands us, so a wrong default cannot survive a real keypress.
+			float m_left_key_sign{ -1.0f };
+			bool m_left_sign_learned{};
 			math::vector2 m_corrected_in{};
 			math::vector2 m_corrected_out{};
 
@@ -460,12 +493,16 @@ namespace features::combat {
 		class autostop
 		{
 		public:
-			void on_create_move( systems::input::usercmd* cmd );
+			/// Called before the ragebot (after_rage = false) and after it (after_rage = true).
+			void on_create_move( systems::input::usercmd* cmd, bool after_rage );
+
+			/// Movement features that run later leave the command alone on a tick auto stop braked.
+			[[nodiscard]] bool braked_this_tick( ) const { return this->m_braked_this_tick; }
 
 		private:
-			[[nodiscard]] float get_effective_accel_base( std::uintptr_t local_pawn, std::uintptr_t movement_services, std::uint32_t flags, float max_weapon_speed ) const;
-			[[nodiscard]] bool wants_rage_stop( ) const;
-			[[nodiscard]] bool wants_manual_stop( ) const;
+			void apply_brake( systems::input::usercmd* cmd, proto::base_usercmd_pb* base, float wish_x, float wish_y, float magnitude );
+
+			bool m_braked_this_tick{};
 		};
 
 		class jumpscout
@@ -473,16 +510,15 @@ namespace features::combat {
 		public:
 			void on_create_move( systems::input::usercmd* cmd );
 
+			/// In the air with the scout and jump scout on.
 			[[nodiscard]] bool active_this_tick( ) const { return this->m_active_this_tick; }
+			/// The air inaccuracy has come down to the configured part of the way to the apex.
+			[[nodiscard]] bool apex_ready( ) const;
 
 		private:
-			[[nodiscard]] bool should_jump( const math::vector3& velocity, bool on_ground, float jump_initial, float jump_apex, float min_air_inaccuracy, float threshold_multiplier ) const;
-			[[nodiscard]] bool ready_to_fire( systems::input::usercmd* cmd, std::uintptr_t local_controller, float jump_initial, float jump_apex ) const;
 			[[nodiscard]] bool has_ssg_08( ) const;
 
 			bool m_active_this_tick{};
-			// Latched on the launch tick so a released attack key mid-air still resolves the hop.
-			bool m_hop_pending{};
 		};
 
 		antiaim m_antiaim{};
@@ -619,6 +655,7 @@ namespace features::combat {
 		[[nodiscard]] std::vector<scan_hit> scan_player( const math::vector3& eye, float inaccuracy, const aim_context& ctx, candidate& cand, shared::lagcomp::record* record, const systems::local::snapshot& local ) const;
 		[[nodiscard]] target select_best( const aim_context& aim_ctx, const std::vector<scan_hit>& hits, float eval_inaccuracy ) const;
 		[[nodiscard]] float evaluate_hitchance( const scan_hit& hit, const aim_context& ctx, float inaccuracy ) const;
+		
 		[[nodiscard]] float get_standing_inaccuracy( const systems::local::snapshot& local, const aim_context& ctx ) const;
 
 		[[nodiscard]] std::vector<scan_hit> scan_taser( const math::vector3& eye, const aim_context& ctx, std::vector<candidate>& candidates, const systems::local::snapshot& local ) const;
@@ -659,6 +696,31 @@ namespace features::combat {
 		/// which left the attack pulse in the command with none of the aim work behind it, so the
 		/// bullet left along whatever yaw the command happened to carry. That is the phantom shot.
 		[[nodiscard]] bool emit_subtick_shot( systems::input::usercmd* cmd );
+
+		/// Counters behind the periodic "rage:" log line. They answer the one question the ragebot cannot
+		/// answer from the outside: when a target was hittable and the gun did not fire, which gate held it.
+		/// Only ever touched from the game thread, so plain integers.
+		struct decision_diag
+		{
+			int frames{}, cant_shoot{}, no_candidates{}, no_hit{}, targets{}, held_hitchance{}, held_duck{}, stop_frames{}, fired{};
+			float hc_sum{}, hc_short_sum{};
+			int latency_sum{}, latency_max{}, latency_n{};
+			unsigned long long last_report{};
+		};
+
+		decision_diag m_diag{};
+
+		/// Why scanned points were thrown away, for the same log line. The scan runs on the thread pool, hence
+		/// atomics; best_damage is the highest damage any point reached, accepted or not, which says at a glance
+		/// whether min damage or the walls are what kept the gun quiet.
+		struct scan_diag
+		{
+			std::atomic<int> candidates{}, extrapolated{}, records{}, points{}, fov{}, no_damage{}, below_min{}, head_group{}, accepted{}, best_damage{};
+		};
+
+		mutable scan_diag m_scan_diag{};
+		int m_first_target_tick{ -1 };
+		void report_decision_diag( );
 
 		bool m_should_stop{};
 		bool m_firing_this_tick{};

@@ -5,6 +5,7 @@
 #include <utilities/hooking/hooking.hpp>
 #include <utilities/logging/logging.hpp>
 #include <utilities/security/security.hpp>
+#include <utilities/unload.hpp>
 #include <core/rendering/rendering.hpp>
 #include <core/systems/systems.hpp>
 #include <core/features/features.hpp>
@@ -50,6 +51,8 @@ namespace hooks {
 			{ &m_draw_legs, &draw_legs, xs ("draw_legs"), PATTERN (patterns::draw_legs) },
 			{ &m_get_transforms_for_hitbox_list, &get_transforms_for_hitbox_list, xs ("get_transforms_for_hitbox_list"), PATTERN (patterns::get_transforms_for_hitbox_list) },
 			{ &m_sort_primitives, &sort_primitives, xs ("sort_primitives"), PATTERN (patterns::sort_primitives) },
+			// Never registered before, so the fire-time inaccuracy capture it feeds could not run at all.
+			{ &m_get_inaccuracy, &get_inaccuracy, xs ("get_inaccuracy"), PATTERN (patterns::get_inaccuracy) },
 			{ &m_get_interpolated_shoot_position, &get_interpolated_shoot_position, xs ("get_interpolated_shoot_position"), PATTERN (patterns::get_interpolated_shoot_position) },
 			{ &m_level_initialization, &level_initialization, xs ("level_initialization"), PATTERN (patterns::level_initialization) },
 			{ &m_level_shutdown, &level_shutdown, xs ("level_shutdown"), PATTERN (patterns::level_shutdown) },
@@ -128,6 +131,13 @@ namespace hooks {
 	HRESULT __fastcall cheat::present( IDXGISwapChain* thisptr, UINT sync_interval, UINT flags )
 	{
 		rendering::g_context.on_present( thisptr );
+
+		// The unload thread resets these hooks and then frees the module. Creating one here after that
+		// point would leave a jump into freed code.
+		if ( unload::requested( ) )
+		{
+			return m_present.call<HRESULT>( thisptr, sync_interval, flags );
+		}
 
 		if ( !m_wnd_proc.is_enabled( ) && rendering::g_context.get_window( ) )
 		{
@@ -216,7 +226,11 @@ namespace hooks {
 		// Two guards, one either side of the original. Whatever happens in our work, the engine still gets
 		// its stage call -- skipping that is not a dropped frame, it is a hung game.
 		diag::exception_scope stage_scope{ "frame_stage_notify: pre" };
-		diag::guard( "frame_stage_notify: pre", [ & ]
+		// Split into separate boundaries on purpose. A boundary that faults 20 times is switched off for the
+		// rest of the session, and this one used to hold the entity and local-player update next to the skin
+		// changer -- so a changer fault took the state every other feature runs on down with it, and the
+		// ragebot, anti-aim and movement all went quiet at once. Each piece now fails on its own.
+		diag::guard( "frame_stage_notify: state", [ & ]
 		{
 			if ( systems::g_entities.is_empty( ) )
 			{
@@ -224,84 +238,87 @@ namespace hooks {
 			}
 
 			systems::g_local.update( );
+		} );
 
-			if ( systems::g_local.get( ).is_valid( ) && systems::g_view.has_camera( ) )
-			{
-				if ( stage == 6 )
-				{
-					diag::set_exception_phase( "frame_stage_notify: guns" );
-					features::changer::g_guns.on_frame_stage_notify( );
-				}
-
-				if ( stage == 7 )
-				{
-					diag::set_exception_phase( "frame_stage_notify: changer" );
-					features::changer::g_custom_models.on_frame_stage_notify( );
-					features::changer::g_agents.on_frame_stage_notify( );
-					features::changer::g_gloves.on_frame_stage_notify( );
-					features::changer::g_knives.on_frame_stage_notify( );
-
-					diag::set_exception_phase( "frame_stage_notify: world and misc" );
-					features::world::g_scene.on_frame_stage_notify( );
-					features::world::g_weather.on_frame_stage_notify( );
-					features::misc::g_other.on_frame_stage_notify( );
-					features::misc::g_impacts.on_frame_stage_notify( );
-				}
-			}
-
-			{
-				static auto was_active{ false };
-				const auto is_active = settings::g_misc.m_removals.skybox_3d.value;
-
-				if ( is_active != was_active )
-				{
-					CONVAR ("r_draw3dskybox")->m_value.i1 = is_active;
-					was_active = is_active;
-				}
-			}
-
-			// Source 2 copies dynamic-light entries into scene objects during this stage.
-			// Publish our entry first, while keeping all manager mutations on the game thread.
+		if ( systems::g_local.get( ).is_valid( ) && systems::g_view.has_camera( ) )
+		{
 			if ( stage == 6 )
 			{
-				diag::set_exception_phase( "frame_stage_notify: dlight" );
-				features::misc::g_dlight.on_frame_stage_notify( );
+				diag::set_exception_phase( "frame_stage_notify: guns" );
+				diag::guard( "frame_stage_notify: guns", [ ] { features::changer::g_guns.on_frame_stage_notify( ); } );
+			}
+
+			if ( stage == 7 )
+			{
+				diag::set_exception_phase( "frame_stage_notify: changer" );
+				diag::guard( "frame_stage_notify: custom models", [ ] { features::changer::g_custom_models.on_frame_stage_notify( ); } );
+				diag::guard( "frame_stage_notify: agents", [ ] { features::changer::g_agents.on_frame_stage_notify( ); } );
+				diag::guard( "frame_stage_notify: gloves", [ ] { features::changer::g_gloves.on_frame_stage_notify( ); } );
+				diag::guard( "frame_stage_notify: knives", [ ] { features::changer::g_knives.on_frame_stage_notify( ); } );
+
+				diag::set_exception_phase( "frame_stage_notify: world and misc" );
+				diag::guard( "frame_stage_notify: scene", [ ] { features::world::g_scene.on_frame_stage_notify( ); } );
+				diag::guard( "frame_stage_notify: weather", [ ] { features::world::g_weather.on_frame_stage_notify( ); } );
+				diag::guard( "frame_stage_notify: other", [ ] { features::misc::g_other.on_frame_stage_notify( ); } );
+				diag::guard( "frame_stage_notify: impacts", [ ] { features::misc::g_impacts.on_frame_stage_notify( ); } );
+			}
+		}
+
+		diag::guard( "frame_stage_notify: removals", [ ]
+		{
+			static auto was_active{ false };
+			const auto is_active = settings::g_misc.m_removals.skybox_3d.value;
+
+			if ( is_active != was_active )
+			{
+				CONVAR ("r_draw3dskybox")->m_value.i1 = is_active;
+				was_active = is_active;
 			}
 		} );
 
+		// Source 2 copies dynamic-light entries into scene objects during this stage.
+		// Publish our entry first, while keeping all manager mutations on the game thread.
+		if ( stage == 6 )
+		{
+			diag::set_exception_phase( "frame_stage_notify: dlight" );
+			diag::guard( "frame_stage_notify: dlight", [ ] { features::misc::g_dlight.on_frame_stage_notify( ); } );
+		}
 		m_frame_stage_notify.call<void>( thisptr, stage );
 
 		diag::set_exception_phase( "frame_stage_notify: post" );
-		diag::guard( "frame_stage_notify: post", [ & ]
+
+		// The current frame's world-to-projection matrix is published by the
+		// engine during render-start stage 12.
+		if ( stage == 12 )
 		{
-			// The current frame's world-to-projection matrix is published by the
-			// engine during render-start stage 12.
-			if ( stage == 12 )
+			diag::guard( "frame_stage_notify: view matrix", [ ]
 			{
 				systems::g_view.update_matrix( );
 				systems::g_frame_data.update( );
-			}
+			} );
+		}
 
-			if ( !systems::g_local.get( ).is_valid( ) || !systems::g_view.has_camera( ) || stage != 6 )
-			{
-				return;
-			}
+		if ( !systems::g_local.get( ).is_valid( ) || !systems::g_view.has_camera( ) || stage != 6 )
+		{
+			return;
+		}
 
-			// Capture lag records only after Source 2 has committed this network update,
-			// so the simulation timestamp, world origin and evaluated bones agree.
-			diag::set_exception_phase( "frame_stage_notify: lag compensation" );
-			features::combat::g_shared.lc( ).run( );
+		// Capture lag records only after Source 2 has committed this network update,
+		// so the simulation timestamp, world origin and evaluated bones agree.
+		diag::set_exception_phase( "frame_stage_notify: lag compensation" );
+		diag::guard( "frame_stage_notify: lag compensation", [ ] { features::combat::g_shared.lc( ).run( ); } );
 
-			diag::set_exception_phase( "frame_stage_notify: chams update" );
+		diag::set_exception_phase( "frame_stage_notify: chams update" );
+		diag::guard( "frame_stage_notify: chams update", [ ]
+		{
 			features::esp::player::g_chams.bt( ).update( );
 			features::esp::player::g_chams.os( ).update( );
-
-			diag::set_exception_phase( "frame_stage_notify: scoreboard and kill feed" );
-			features::misc::g_scoreboard_weapons.on_frame_stage_notify( );
-			features::misc::g_other.do_kill_feed_preservation( );
 		} );
-	}
 
+		diag::set_exception_phase( "frame_stage_notify: scoreboard and kill feed" );
+		diag::guard( "frame_stage_notify: scoreboard", [ ] { features::misc::g_scoreboard_weapons.on_frame_stage_notify( ); } );
+		diag::guard( "frame_stage_notify: kill feed", [ ] { features::misc::g_other.do_kill_feed_preservation( ); } );
+	}
 	void __fastcall cheat::create_move( std::uintptr_t thisptr, int slot, bool active )
 	{
 		const auto local = systems::g_local.get( );
@@ -311,13 +328,18 @@ namespace hooks {
 			return m_create_move.call<void>( thisptr, slot, active );
 		}
 
+		// Counters for the once-every-few-seconds line at the bottom. They exist so that when a feature does
+		// nothing, the log says which stage stopped it instead of the answer being another round of guessing.
+		static std::atomic<std::uint32_t> diag_calls{}, diag_overwrites{}, diag_pipelines{};
+		diag_calls.fetch_add( 1, std::memory_order_relaxed );
+
 		const auto cmd = systems::g_input.get_current_cmd( local.controller );
 		if ( cmd && systems::g_input.is_subtick_overwrite( cmd ) )
 		{
+			diag_overwrites.fetch_add( 1, std::memory_order_relaxed );
 			systems::g_input.set_weapon_select( cmd, thisptr );
 			return;
 		}
-
 		m_create_move.call<void>( thisptr, slot, active );
 
 		// From here down the work is entirely ours, so the whole pipeline sits behind one guard. A fault in
@@ -377,7 +399,7 @@ namespace hooks {
 				diag::set_exception_phase( "create_move: combat misc" );
 				features::combat::g_misc.antiaim( ).on_create_move( current_cmd );
 				features::combat::g_misc.jumpscout( ).on_create_move( current_cmd );
-				features::combat::g_misc.autostop( ).on_create_move( current_cmd );
+				features::combat::g_misc.autostop( ).on_create_move( current_cmd, false );
 			}
 			if ( trace )
 			{
@@ -416,6 +438,8 @@ namespace hooks {
 				}
 
 				diag::set_exception_phase( "create_move: post-combat movement" );
+				// Same-tick stop for a target the ragebot found this tick.
+				features::combat::g_misc.autostop( ).on_create_move( current_cmd, true );
 				features::combat::g_misc.duckpeek( ).on_create_move( current_cmd );
 				features::movement::g_test_strafer.on_create_move( current_cmd );
 				features::movement::g_airstrafe.on_create_move( current_cmd );
@@ -462,6 +486,69 @@ namespace hooks {
 
 			pipeline_complete = true;
 		} );
+
+		if ( pipeline_complete )
+		{
+			diag_pipelines.fetch_add( 1, std::memory_order_relaxed );
+		}
+
+		static std::atomic<ULONGLONG> diag_last_report{};
+		const auto diag_now = GetTickCount64( );
+		if ( diag_now - diag_last_report.load( std::memory_order_relaxed ) >= 2500 )
+		{
+			diag_last_report.store( diag_now, std::memory_order_relaxed );
+
+			const auto current = systems::g_input.get( );
+			const auto& shared_ctx = features::combat::g_shared.ctx( );
+			const auto base = current ? current->csgo_user_cmd.mutable_base( ) : nullptr;
+			const auto angles = base ? base->viewangles( ) : nullptr;
+
+			diag::writef(
+				diag::level::debug,
+				"create_move: calls=%u overwrite=%u pipeline=%u | ctx=%d weapon_type=%u ground=%d | buttons=0x%llX | aa=%d cmd_yaw=%.1f cmd_pitch=%.1f | rage_target=%d firing=%d | bhop=%d airstrafe=%d rage=%d aa_on=%d",
+				diag_calls.exchange( 0, std::memory_order_relaxed ),
+				diag_overwrites.exchange( 0, std::memory_order_relaxed ),
+				diag_pipelines.exchange( 0, std::memory_order_relaxed ),
+				shared_ctx.valid ? 1 : 0,
+				shared_ctx.weapon_type,
+				( systems::g_prediction.pre( ).flags & cstypes::entity_flags::on_ground ) ? 1 : 0,
+				current ? static_cast<unsigned long long>( current->buttons.value ) : 0ull,
+				features::combat::g_misc.antiaim( ).is_active( ) ? 1 : 0,
+				angles ? angles->y( ) : 0.0f,
+				angles ? angles->x( ) : 0.0f,
+				features::combat::g_rage.has_target( ) ? 1 : 0,
+				features::combat::g_rage.is_firing_this_tick( ) ? 1 : 0,
+				settings::g_movement.bhop.value ? 1 : 0,
+				settings::g_movement.airstrafe.value ? 1 : 0,
+				settings::g_combat.m_ragebot.enabled.value ? 1 : 0,
+				settings::g_combat.m_antiaim.enabled.value ? 1 : 0 );
+
+			features::combat::g_misc.antiaim( ).log_debug( );
+
+			auto& movement_diag = features::movement::g_diag;
+			diag::writef(
+				diag::level::debug,
+				"movement: sv_autobunnyhopping=%d sv_quantize_movement_input=%d speed2d=%.1f | bhop calls=%u autobhop_cvar=%u no_jump_key=%u on_ground=%u air_jump_held=%u no_landing=%u scheduled=%u | airstrafe calls=%u shift_air=%u off_or_firing=%u ground=%u sprint=%u ran=%u | strafer calls=%u inactive=%u ground=%u ran=%u",
+				CONVAR ("sv_autobunnyhopping")->get<bool>( ) ? 1 : 0,
+				CONVAR ("sv_quantize_movement_input")->get<bool>( ) ? 1 : 0,
+				systems::g_prediction.pre( ).networked_velocity.length_2d( ),
+				movement_diag.bhop_calls.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.bhop_autobhop_convar.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.bhop_no_jump_key.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.bhop_on_ground.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.bhop_air_jump_held.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.bhop_no_landing.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.bhop_scheduled.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.airstrafe_calls.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.airstrafe_shift_air.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.airstrafe_off_or_firing.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.airstrafe_ground.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.airstrafe_sprint.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.airstrafe_ran.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.strafer_calls.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.strafer_inactive.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.strafer_ground.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.strafer_ran.exchange( 0, std::memory_order_relaxed ) );		}
 
 		if ( !pipeline_complete )
 		{
@@ -976,10 +1063,10 @@ namespace hooks {
 		const auto result_address = reinterpret_cast< std::uintptr_t >( _ReturnAddress( ) );
 #endif
 
+		// The pattern resolves to the exact return address of the fire code's call, so only the inaccuracy the
+		// bullet is actually fired with is captured -- not the hundreds of calls the scan and the HUD make.
 		static const auto base_fire_guns_get_inaccuracy = PATTERN( patterns::base_fire_guns_get_inaccuracy );
-		if ( base_fire_guns_get_inaccuracy &&
-			result_address > base_fire_guns_get_inaccuracy &&
-			result_address < base_fire_guns_get_inaccuracy + 0x600 )
+		if ( base_fire_guns_get_inaccuracy && result_address == base_fire_guns_get_inaccuracy )
 		{
 			diag::exception_scope inaccuracy_scope{ "impacts: fire inaccuracy" };
 			diag::guard( "get_inaccuracy", [ & ] { features::misc::g_impacts.on_base_fire_guns_get_inaccuracy( thisptr, result ); } );

@@ -10,6 +10,14 @@ namespace features::movement {
 
 	void airstrafe::on_create_move( systems::input::usercmd* cmd )
 	{
+		g_diag.airstrafe_calls.fetch_add( 1, std::memory_order_relaxed );
+
+		// Auto stop / jump scout is braking this tick; strafing would undo it.
+		if ( features::combat::g_misc.autostop( ).braked_this_tick( ) )
+		{
+			return;
+		}
+
 		if ( features::movement::g_jumpbug.active_this_tick( ) )
 		{
 			return;
@@ -29,6 +37,7 @@ namespace features::movement {
 
 		if ( shift_held && in_air )
 		{
+			g_diag.airstrafe_shift_air.fetch_add( 1, std::memory_order_relaxed );
 			const auto& vel = prestate.networked_velocity;
 			float forward_move = 0.0f;
 			float left_move = 0.0f;
@@ -73,6 +82,7 @@ namespace features::movement {
 
 		if ( !settings::g_movement.airstrafe.value && !wants_stop || features::combat::g_rage.is_firing_this_tick( ) )
 		{
+			g_diag.airstrafe_off_or_firing.fetch_add( 1, std::memory_order_relaxed );
 			return;
 		}
 
@@ -82,7 +92,7 @@ namespace features::movement {
 			return;
 		}
 
-		const auto move_type = memory::read<std::uint8_t>( local.pawn + SCHEMA( "CBaseEntity", "m_nActualMoveType"_hash ) );
+		const auto move_type = memory::read<std::uint8_t>( local.pawn + SCHEMA( "C_BaseEntity", "m_nActualMoveType"_hash ) );
 		if ( move_type == cstypes::move_type::ladder || move_type == cstypes::move_type::noclip )
 		{
 			return;
@@ -95,11 +105,13 @@ namespace features::movement {
 
 		if ( prestate.flags & cstypes::entity_flags::on_ground )
 		{
+			g_diag.airstrafe_ground.fetch_add( 1, std::memory_order_relaxed );
 			return;
 		}
 
 		if ( current_buttons & static_cast< std::uintptr_t >( cstypes::command_buttons::in_sprint ) )
 		{
+			g_diag.airstrafe_sprint.fetch_add( 1, std::memory_order_relaxed );
 			return;
 		}
 
@@ -123,6 +135,8 @@ namespace features::movement {
 		{
 			return;
 		}
+
+		g_diag.airstrafe_ran.fetch_add( 1, std::memory_order_relaxed );
 
 		const auto sv_airaccelerate = CONVAR ("sv_airaccelerate")->get<float>( );
 		const auto sv_air_max_wishspeed = CONVAR ("sv_air_max_wishspeed")->get<float>( );

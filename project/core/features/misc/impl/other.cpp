@@ -29,7 +29,7 @@ namespace features::misc {
 
 			other::s_display_name = display_name;
 			other::s_name_change_pending = true;
-			memory::call<void>( PATTERN( patterns::engine_client_cmd ), addresses::globals::source2engine_to_client, 0, xs( "setinfo name x" ), 0x7ffef001 );
+			memory::call<void>( PATTERN( patterns::engine_client_cmd ), addresses::globals::source2engine_to_client, 0, xs( "setinfo name x" ), 0x7ffef001, std::numeric_limits<double>::quiet_NaN( ), 0ull );
 			other::s_name_change_pending = false;
 		}
 
@@ -299,7 +299,7 @@ namespace features::misc {
 
 		if ( !cmd.empty( ) )
 		{
-			memory::call<void>(PATTERN (patterns::engine_client_cmd), addresses::globals::source2engine_to_client, 0, cmd.c_str( ), 0x7ffef001 );
+			memory::call<void>(PATTERN (patterns::engine_client_cmd), addresses::globals::source2engine_to_client, 0, cmd.c_str( ), 0x7ffef001, std::numeric_limits<double>::quiet_NaN( ), 0ull );
 		}
 	}
 

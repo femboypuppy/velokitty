@@ -154,8 +154,17 @@ namespace features::movement {
 	{
 		this->m_handled_this_tick = false;
 
+		g_diag.strafer_calls.fetch_add( 1, std::memory_order_relaxed );
+
+		// Auto stop / jump scout is braking this tick; strafing would undo it.
+		if ( features::combat::g_misc.autostop( ).braked_this_tick( ) )
+		{
+			return;
+		}
+
 		if ( !this->is_active( ) )
 		{
+			g_diag.strafer_inactive.fetch_add( 1, std::memory_order_relaxed );
 			return;
 		}
 
@@ -176,7 +185,7 @@ namespace features::movement {
 			return;
 		}
 
-		const auto move_type = memory::read<std::uint8_t>( local.pawn + SCHEMA( "CBaseEntity", "m_nActualMoveType"_hash ) );
+		const auto move_type = memory::read<std::uint8_t>( local.pawn + SCHEMA( "C_BaseEntity", "m_nActualMoveType"_hash ) );
 		if ( move_type == cstypes::move_type::ladder || move_type == cstypes::move_type::noclip )
 		{
 			return;
@@ -185,6 +194,7 @@ namespace features::movement {
 		const auto& prestate = systems::g_prediction.pre( );
 		if ( prestate.flags & cstypes::entity_flags::on_ground )
 		{
+			g_diag.strafer_ground.fetch_add( 1, std::memory_order_relaxed );
 			return;
 		}
 
@@ -193,6 +203,7 @@ namespace features::movement {
 			return;
 		}
 
+		g_diag.strafer_ran.fetch_add( 1, std::memory_order_relaxed );
 		this->quantized_path( cmd );
 	}
 

@@ -235,6 +235,11 @@ namespace xui {
 		// The window backdrop blur is the most expensive thing the menu draws -- it resolves the frame
 		// into a scratch target per window. Worth a switch for anyone running the game CPU-bound.
 		bool window_blur{ true };
+
+		// Legacy skin: square corners, one-pixel black outlines, bevelled gradient faces, a layered window
+		// frame with an accent strip along the top, and titled group boxes. The menu turns it on; every widget
+		// keeps its behaviour and only changes how it is painted.
+		bool legacy{ false };
 	};
 
 	enum class style_var

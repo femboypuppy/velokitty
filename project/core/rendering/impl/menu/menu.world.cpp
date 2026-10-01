@@ -43,7 +43,7 @@ namespace rendering {
 
 			page.left( );
 
-			if ( xui::begin_child( "##esp_items", col_w ) )
+			if ( xui::begin_child( "items##esp_items", col_w ) )
 			{
 				static int item_group{};
 				xui::combo( "group##item_sel", item_group, settings::esp::item::k_group_names, settings::esp::item::k_group_count );
@@ -98,7 +98,7 @@ namespace rendering {
 
 			page.right( );
 
-			if ( xui::begin_child( "##esp_projectiles", col_w ) )
+			if ( xui::begin_child( "projectiles##esp_projectiles", col_w ) )
 			{
 				static auto proj_group{ 0 };
 				xui::combo( "group##proj_sel", proj_group, settings::esp::projectile::k_group_names, settings::esp::projectile::k_group_count );
@@ -168,7 +168,7 @@ namespace rendering {
 				xui::end_child( );
 			}
 
-			if ( xui::begin_child( "##esp_other", col_w ) )
+			if ( xui::begin_child( "other##esp_other", col_w ) )
 			{
 				xui::checkbox( "bomb timer", other.bomb_timer );
 				xui::checkbox( "spectator list", other.spectator_list );
@@ -181,7 +181,7 @@ namespace rendering {
 		{
 			auto& scene = w.m_scene;
 
-			if ( xui::begin_child( "##world_scene_left", col_w ) )
+			if ( xui::begin_child( "scene##world_scene_left", col_w ) )
 			{
 				xui::checkbox( "skybox material", scene.skybox.custom_skybox );
 				if ( xui::begin_popup( "##skybox_popup", 220.0f ) )
@@ -249,7 +249,7 @@ namespace rendering {
 
 			page.right( );
 
-			if ( xui::begin_child( "##world_scene_right", col_w ) )
+			if ( xui::begin_child( "effects##world_scene_right", col_w ) )
 			{
 				xui::checkbox( "depth of field", scene.dof );
 				if ( xui::begin_popup( "##dof_popup", 220.0f ) )
@@ -269,7 +269,7 @@ namespace rendering {
 		{
 			auto& weather = w.m_weather;
 
-			if ( xui::begin_child( "##world_weather", col_w ) )
+			if ( xui::begin_child( "weather##world_weather", col_w ) )
 			{
 				xui::checkbox( "weather", weather.enabled );
 				if ( xui::begin_popup( "##weather_popup", 220.0f ) )

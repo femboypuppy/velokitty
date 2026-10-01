@@ -38,9 +38,9 @@ namespace features::movement {
 			auto trace_mask{ 0ull };
 			{
 				const auto pawn_ptr = memory::read<std::uintptr_t>( movement_services + 56 );
-				trace_mask = memory::read<std::uintptr_t>( pawn_ptr + 0xd48 );
+				trace_mask = memory::read<std::uintptr_t>( pawn_ptr + 0xd50 );
 
-				if ( !pawn_ptr || ( memory::read<std::uint32_t>( pawn_ptr + 0x3f8 ) & 0x10 ) )
+				if ( !pawn_ptr || ( memory::read<std::uint32_t>( pawn_ptr + SCHEMA( "C_BaseEntity", "m_fFlags"_hash ) ) & 0x10 ) )
 				{
 					trace_mask |= 0x20;
 				}
@@ -109,13 +109,17 @@ namespace features::movement {
 			return;
 		}
 
+		g_diag.bhop_calls.fetch_add( 1, std::memory_order_relaxed );
+
 		if (CONVAR ("sv_autobunnyhopping")->get<bool>( ) )
 		{
+			g_diag.bhop_autobhop_convar.fetch_add( 1, std::memory_order_relaxed );
 			return;
 		}
 
 		if ( !( cmd->buttons.value & cstypes::command_buttons::in_jump ) )
 		{
+			g_diag.bhop_no_jump_key.fetch_add( 1, std::memory_order_relaxed );
 			return;
 		}
 
@@ -139,9 +143,11 @@ namespace features::movement {
 		const auto& prestate = systems::g_prediction.pre( );
 		if ( prestate.flags & cstypes::entity_flags::on_ground )
 		{
+			g_diag.bhop_on_ground.fetch_add( 1, std::memory_order_relaxed );
 			return;
 		}
 
+		g_diag.bhop_air_jump_held.fetch_add( 1, std::memory_order_relaxed );
 		cmd->buttons.value &= ~cstypes::command_buttons::in_jump;
 
 		const auto movement_services = memory::read<std::uintptr_t>( local.pawn + SCHEMA( "C_BasePlayerPawn", "m_pMovementServices"_hash ) );
@@ -154,8 +160,11 @@ namespace features::movement {
 		const auto landing = predict_landing_fraction( local.pawn, movement_services, prestate, holding_duck );
 		if ( !landing )
 		{
+			g_diag.bhop_no_landing.fetch_add( 1, std::memory_order_relaxed );
 			return;
 		}
+
+		g_diag.bhop_scheduled.fetch_add( 1, std::memory_order_relaxed );
 
 		const auto base = cmd->csgo_user_cmd.mutable_base( );
 		if ( !base )

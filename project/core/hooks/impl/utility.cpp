@@ -148,6 +148,12 @@ namespace {
 	/// a guarded call plus the fallback to the engine. True means the request is closed and answered.
 	bool serve_read( std::uintptr_t a1 )
 	{
+		// Without the close call the engine's request never completes, so let the original read run instead.
+		if ( !PATTERN (patterns::filesystem_close) )
+		{
+			return false;
+		}
+
 		const auto flags_len = memory::read<std::uint32_t>( a1 - 212 );
 		const auto len = flags_len & 0x3fffffff;
 

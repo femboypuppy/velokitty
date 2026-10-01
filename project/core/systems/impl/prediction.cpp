@@ -319,20 +319,22 @@ namespace systems {
 			memory::call<void>( prediction_set_pawn, pawn_guard, local.pawn );
 			memory::call<void>( prediction_set_state, pred_state, std::uint8_t( 1 ) );
 
-			memory::call_vfunc<void>( movement_services, 46, cmd_ptr );  // SetupContext
+			// Slots 47/48/49 are SetupContext/CleanupContext/seed-sync as of the Sep 25 2026 build. They were 46/47/48 before a virtual was
+			// inserted ahead of them, and the stale indices called an unrelated getter, a context reset and a flag setter instead.
+			memory::call_vfunc<void>( movement_services, 47, cmd_ptr );  // SetupContext
 			if ( trace )
 			{
 				diag::step( "prediction: context ready" );
 			}
 
 			const auto move_data = memory::call_vfunc<std::uintptr_t>( movement_services, 38 );
-			const bool fb_seedsync = memory::call_vfunc<bool>( movement_services, 48 );
+			const bool fb_seedsync = memory::call_vfunc<bool>( movement_services, 49 );
 
 			if ( !move_data )
 			{
 				memory::call<void>( prediction_set_state, pred_state, std::uint8_t( 0 ) );
 				memory::call<void>( prediction_reset_pawn, pawn_guard );
-				memory::call_vfunc<void>( movement_services, 47 );  // CleanupContext
+				memory::call_vfunc<void>( movement_services, 48, cmd_ptr );  // CleanupContext
 				return false;
 			}
 
@@ -360,7 +362,7 @@ namespace systems {
 
 			memory::call<void>( prediction_set_state, pred_state, std::uint8_t( 0 ) );
 			memory::call<void>( prediction_reset_pawn, pawn_guard );
-			memory::call_vfunc<void>( movement_services, 47 );  // CleanupContext
+			memory::call_vfunc<void>( movement_services, 48, cmd_ptr );  // CleanupContext
 			if ( trace )
 			{
 				diag::step( "prediction: context cleaned" );

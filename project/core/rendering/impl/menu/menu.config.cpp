@@ -1,6 +1,7 @@
 #include <pch/pch.hpp>
 #include <utilities/math/math.hpp>
 #include <core/settings.hpp>
+#include <utilities/unload.hpp>
 
 #include "../../rendering.hpp"
 
@@ -216,7 +217,7 @@ namespace rendering {
 
 		xui::layout::set_cursor( this->m_body_x - this->m_x, this->m_body_y - this->m_y );
 
-		if ( !xui::begin_child( "##cfg_panel", this->m_body_w, this->m_body_h, false ) )
+		if ( !xui::begin_child( "configs##cfg_panel", this->m_body_w, this->m_body_h, false ) )
 		{
 			return;
 		}
@@ -408,4 +409,59 @@ namespace rendering {
 		xui::end_child( );
 	}
 
+
+	/// The page behind the avatar in the sidebar. It holds one button and nothing else on purpose: the
+	/// only thing it does is start the unload, and a page that also carried settings would put a
+	/// destructive action next to controls people click all the time.
+	void menu::draw_unload( )
+	{
+		auto& dl = xui::draw::current( );
+		const auto& s = xui::ctx( ).style;
+		const auto& input = xui::ctx( ).input;
+
+		xui::layout::set_cursor( this->m_body_x - this->m_x, this->m_body_y - this->m_y );
+
+		if ( !xui::begin_child( "unload##unload_panel", this->m_body_w, this->m_body_h, false ) )
+		{
+			return;
+		}
+
+		const auto [ avail_w, avail_h ] = xui::layout::avail( );
+		const auto area = xui::layout::item( avail_w, std::max( 60.0f, avail_h - s.item_spacing_y * 2.0f ) );
+
+		constexpr auto btn_h{ 84.0f };
+		const auto btn_w = std::clamp( area.w - 48.0f, 120.0f, 340.0f );
+		const xui::rect btn{
+			std::floor( area.x + ( area.w - btn_w ) * 0.5f ),
+			std::floor( area.y + ( area.h - btn_h ) * 0.5f ),
+			btn_w,
+			btn_h };
+
+		const auto unloading = unload::requested( );
+		const auto hovered = !unloading && input.in_rect( btn ) && !xui::ctx( ).overlay_blocking( );
+		const auto hover_anim = xui::anim::lerp( xui::fnv1a( "unload_btn_hover" ), hovered ? 1.0f : 0.0f, 12.0f );
+		const auto press_anim = xui::anim::lerp( xui::fnv1a( "unload_btn_press" ), hovered && input.mouse_down ? 1.0f : 0.0f, 16.0f );
+
+		// Red enough to read as the one destructive control in the menu, muted enough not to shout: a low
+		// alpha fill, a thin border, and the text taking the full colour only on hover.
+		constexpr xdraw::color red{ 224, 82, 82, 255 };
+		const auto rounding = xdraw::corner_radius{ s.button_rounding + 2.0f };
+
+		const auto fill_alpha = 34.0f + 34.0f * hover_anim + 26.0f * press_anim;
+		const auto border_alpha = 120.0f + 100.0f * hover_anim;
+
+		dl.rect_filled( btn.x, btn.y, btn.w, btn.h, red.alpha( static_cast< std::uint8_t >( fill_alpha ) ), rounding );
+		dl.rect( btn.x, btn.y, btn.w, btn.h, red.alpha( static_cast< std::uint8_t >( border_alpha ) ), rounding );
+
+		const auto label = unloading ? "unloading..." : "unload";
+		const auto [ tw, th ] = xdraw::measure_text( label );
+		dl.text( std::floor( btn.x + ( btn.w - tw ) * 0.5f ), std::floor( btn.y + ( btn.h - th ) * 0.5f ), label, xui::lerp( red.alpha( 215 ), red, hover_anim ) );
+
+		if ( hovered && input.mouse_clicked )
+		{
+			unload::request( );
+		}
+
+		xui::end_child( );
+	}
 } // namespace rendering

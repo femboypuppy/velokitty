@@ -26,7 +26,7 @@ namespace rendering {
 		if ( !lb.enabled.value )
 		{
 			// Nothing else on the page, so the master card takes the whole body width.
-			if ( xui::begin_child( "##legitbot_master", page.full_w( ) ) )
+			if ( xui::begin_child( "general##legitbot_master", page.full_w( ) ) )
 			{
 				xui::checkbox( "enabled", lb.enabled );
 				xui::end_child( );
@@ -35,13 +35,13 @@ namespace rendering {
 			return;
 		}
 
-		if ( xui::begin_child( "##legitbot_master", col_w ) )
+		if ( xui::begin_child( "general##legitbot_master", col_w ) )
 		{
 			xui::checkbox( "enabled", lb.enabled );
 			xui::end_child( );
 		}
 
-		if ( xui::begin_child( "##legitbot_aimbot", col_w ) )
+		if ( xui::begin_child( "aimbot##legitbot_aimbot", col_w ) )
 		{
 			xui::checkbox( "aimbot", wg.aimbot );
 
@@ -60,7 +60,7 @@ namespace rendering {
 			xui::end_child( );
 		}
 
-		if ( xui::begin_child( "##legitbot_rcs", col_w ) )
+		if ( xui::begin_child( "recoil control##legitbot_rcs", col_w ) )
 		{
 			// Both pairs are a randomised range around 100%, not an axis split -- compute_rcs_factor
 			// picks a value between them per shot so the compensation never repeats exactly.
@@ -78,7 +78,7 @@ namespace rendering {
 
 		page.right( );
 
-		if ( xui::begin_child( "##legitbot_triggerbot", col_w ) )
+		if ( xui::begin_child( "triggerbot##legitbot_triggerbot", col_w ) )
 		{
 			xui::checkbox( "triggerbot", wg.triggerbot );
 			xui::slider_int( "delay", wg.trigger_delay, 0, 250, "%dms" );
@@ -91,7 +91,7 @@ namespace rendering {
 
 		// The human-motion knobs live on their own card rather than behind a popup on "aimbot": the last
 		// time they sat in a popup they read as missing.
-		if ( xui::begin_child( "##legitbot_tracking", col_w ) )
+		if ( xui::begin_child( "tracking##legitbot_tracking", col_w ) )
 		{
 			xui::slider_int( "reaction time", wg.reaction_delay, 0, 250, "%dms" );
 			xui::slider_float( "aim error", wg.aim_error, 0.0f, 2.0f, "%.2f°" );
@@ -106,7 +106,7 @@ namespace rendering {
 			xui::end_child( );
 		}
 
-		if ( xui::begin_child( "##legitbot_other", col_w ) )
+		if ( xui::begin_child( "other##legitbot_other", col_w ) )
 		{
 			xui::checkbox( "autowall", wg.autowall );
 			xui::slider_int( "min damage##legit", wg.min_damage, 1, 125, "%d" );

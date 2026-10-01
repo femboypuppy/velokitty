@@ -123,9 +123,9 @@ namespace features::movement {
 		auto trace_mask{ 0ull };
 		{
 			const auto pawn_ptr = memory::read<std::uintptr_t>( movement_services + 56 );
-			trace_mask = memory::read<std::uintptr_t>( pawn_ptr + 0xd48 );
+			trace_mask = memory::read<std::uintptr_t>( pawn_ptr + 0xd50 );
 
-			if ( !pawn_ptr || ( memory::read<std::uint32_t>( pawn_ptr + 0x3f8 ) & 0x10 ) )
+			if ( !pawn_ptr || ( memory::read<std::uint32_t>( pawn_ptr + SCHEMA( "C_BaseEntity", "m_fFlags"_hash ) ) & 0x10 ) )
 			{
 				trace_mask |= 0x20;
 			}

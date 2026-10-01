@@ -473,6 +473,10 @@ namespace features::misc {
 			{
 				it->server_inaccuracy = inaccuracy;
 				it->server_confirmed = true;
+
+				// The game's own fire-time inaccuracy next to the one the shot was aimed with. With no spread on,
+				// any difference between the two turns straight into aim error.
+				diag::writef( diag::level::info, "fire inaccuracy: predicted=%.5f game=%.5f diff=%+.5f", it->predicted_inaccuracy, inaccuracy, inaccuracy - it->predicted_inaccuracy );
 				break;
 			}
 		}
@@ -1042,6 +1046,40 @@ namespace features::misc {
 
 		const auto name = this->get_player_name_from_pawn( shot.victim_pawn );
 		const auto group = systems::g_hitboxes.hitgroup_to_name( shot.hitgroup );
+
+		// The numbers behind the reason string, written to the log file only. "shoot position mismatch" and
+		// "impact mismatch" say which check failed, not by how much or in which direction, and the size and
+		// sign of the offset is what says whether the eye position, the aim punch or the spread solve is off.
+		{
+			const auto origin_delta = shot.server_shoot_position_confirmed ? shot.server_shoot_position - shot.shoot_position : math::vector3{};
+			const auto used_origin = shot.server_shoot_position_confirmed ? shot.server_shoot_position : shot.shoot_position;
+
+			math::vector3 ideal_forward{};
+			math::helpers::angle_vectors_left( shot.aim_angle, &ideal_forward );
+
+			auto deviation_deg{ 0.0f };
+			auto impact_dist{ 0.0f };
+			if ( shot.impact_confirmed )
+			{
+				const auto to_impact = shot.impact_position - used_origin;
+				impact_dist = to_impact.length( );
+				if ( impact_dist > 0.1f )
+				{
+					deviation_deg = math::helpers::rad_to_deg( std::acosf( std::clamp( ideal_forward.dot( to_impact * ( 1.0f / impact_dist ) ), -1.0f, 1.0f ) ) );
+				}
+			}
+
+			const auto cone_deg = math::helpers::rad_to_deg( std::atanf( std::max( shot.server_confirmed ? shot.server_inaccuracy : shot.predicted_inaccuracy, 0.0f ) + std::max( shot.predicted_spread, 0.0f ) ) );
+
+			diag::writef(
+				diag::level::info,
+				"shot detail: reason=%s wpn=%u hc=%.0f%% | origin server=%d delta=(%.2f %.2f %.2f) len=%.2f | aim=(%.2f %.2f) impact_dev=%.2f deg cone=%.2f deg impact_dist=%.0f | inacc pred=%.4f server=%.4f (%d) spread=%.4f | tick=%d age=%d",
+				reason, shot.weapon_type, shot.hitchance * 100.0f,
+				shot.server_shoot_position_confirmed ? 1 : 0, origin_delta.x, origin_delta.y, origin_delta.z, origin_delta.length( ),
+				shot.aim_angle.x, shot.aim_angle.y, deviation_deg, cone_deg, impact_dist,
+				shot.predicted_inaccuracy, shot.server_inaccuracy, shot.server_confirmed ? 1 : 0, shot.predicted_spread,
+				shot.tick, static_cast< int >( ( current_time - shot.time ) * 64.0f ) );
+		}
 
 		if ( cfg.console_log.value || cfg.chat_log.value )
 		{
