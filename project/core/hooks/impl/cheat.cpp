@@ -37,6 +37,7 @@ namespace hooks {
 			{ &m_is_glowing, &is_glowing, xs ("is_glowing"), PATTERN (patterns::is_glowing) },
 			{ &m_get_glow_color, &get_glow_color, xs ("get_glow_color"), PATTERN (patterns::get_glow_color) },
 			{ &m_generate_primitives, &generate_primitives, xs ("generate_primitives"), PATTERN (patterns::generate_primitives) },
+			{ &m_generate_primitives_base, &generate_primitives_base, xs ("generate_primitives_base"), PATTERN (patterns::generate_primitives_base) },
 			{ &m_parse_report_hit, &parse_report_hit, xs ("parse_report_hit"), PATTERN (patterns::parse_report_hit) },
 			{ &m_setup_fog, &setup_fog, xs ("setup_fog"), PATTERN (patterns::setup_fog) },
 			{ &m_set_shader_param, &set_shader_param, xs ("set_shader_param"), PATTERN (patterns::set_shader_param) },
@@ -45,6 +46,8 @@ namespace hooks {
 			{ &m_update_fov_sensitivity, &update_fov_sensitivity, xs ("update_fov_sensitivity"), PATTERN (patterns::update_fov_sensitivity) },
 			{ &m_render_scope, &render_scope, xs ("render_scope"), PATTERN (patterns::render_scope) },
 			{ &m_render_crosshair, &render_crosshair, xs ("render_crosshair"), PATTERN (patterns::render_crosshair) },
+			{ &m_viewmodel_get_offset_fov, &viewmodel_get_offset_fov, xs ("viewmodel_get_offset_fov"), PATTERN (patterns::viewmodel_get_offset_fov) },
+			{ &m_viewmodel_get_offset_fov_pawn, &viewmodel_get_offset_fov_pawn, xs ("viewmodel_get_offset_fov_pawn"), PATTERN (patterns::viewmodel_get_offset_fov_pawn) },
 			{ &m_prepare_scene_material, &prepare_scene_material, xs ("prepare_scene_material"), PATTERN (patterns::prepare_scene_material) },
 			{ &m_post_network_data_received, &post_network_data_received, xs ("post_network_data_received"), PATTERN (patterns::post_network_data_received) },
 			{ &m_draw_overhead, &draw_overhead, xs ("draw_overhead"), PATTERN (patterns::draw_overhead) },
@@ -101,6 +104,7 @@ namespace hooks {
 		m_is_glowing.reset( );
 		m_get_glow_color.reset( );
 		m_generate_primitives.reset( );
+		m_generate_primitives_base.reset( );
 		m_parse_report_hit.reset( );
 		m_setup_fog.reset( );
 		m_set_shader_param.reset( );
@@ -109,6 +113,8 @@ namespace hooks {
 		m_update_fov_sensitivity.reset( );
 		m_render_scope.reset( );
 		m_render_crosshair.reset( );
+		m_viewmodel_get_offset_fov.reset( );
+		m_viewmodel_get_offset_fov_pawn.reset( );
 		m_prepare_scene_material.reset( );
 		m_post_network_data_received.reset( );
 		m_draw_overhead.reset( );
@@ -528,9 +534,10 @@ namespace hooks {
 			auto& movement_diag = features::movement::g_diag;
 			diag::writef(
 				diag::level::debug,
-				"movement: sv_autobunnyhopping=%d sv_quantize_movement_input=%d speed2d=%.1f | bhop calls=%u autobhop_cvar=%u no_jump_key=%u on_ground=%u air_jump_held=%u no_landing=%u scheduled=%u | airstrafe calls=%u shift_air=%u off_or_firing=%u ground=%u sprint=%u ran=%u | strafer calls=%u inactive=%u ground=%u ran=%u",
+				"movement: sv_autobunnyhopping=%d sv_quantize_movement_input=%d sv_subtick_movement_view_angles=%d speed2d=%.1f | bhop calls=%u autobhop_cvar=%u no_jump_key=%u on_ground=%u air_jump_held=%u no_landing=%u scheduled=%u retry=%u | airstrafe calls=%u shift_air=%u off_or_firing=%u ground=%u sprint=%u ran=%u | strafer calls=%u inactive=%u ground=%u ran=%u",
 				CONVAR ("sv_autobunnyhopping")->get<bool>( ) ? 1 : 0,
 				CONVAR ("sv_quantize_movement_input")->get<bool>( ) ? 1 : 0,
+				CONVAR ("sv_subtick_movement_view_angles")->get<bool>( ) ? 1 : 0,
 				systems::g_prediction.pre( ).networked_velocity.length_2d( ),
 				movement_diag.bhop_calls.exchange( 0, std::memory_order_relaxed ),
 				movement_diag.bhop_autobhop_convar.exchange( 0, std::memory_order_relaxed ),
@@ -539,6 +546,7 @@ namespace hooks {
 				movement_diag.bhop_air_jump_held.exchange( 0, std::memory_order_relaxed ),
 				movement_diag.bhop_no_landing.exchange( 0, std::memory_order_relaxed ),
 				movement_diag.bhop_scheduled.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.bhop_retry.exchange( 0, std::memory_order_relaxed ),
 				movement_diag.airstrafe_calls.exchange( 0, std::memory_order_relaxed ),
 				movement_diag.airstrafe_shift_air.exchange( 0, std::memory_order_relaxed ),
 				movement_diag.airstrafe_off_or_firing.exchange( 0, std::memory_order_relaxed ),
@@ -732,6 +740,18 @@ namespace hooks {
 
 	void __fastcall cheat::generate_primitives( std::uintptr_t thisptr, std::uintptr_t scene_object, std::uintptr_t scene_view, std::uintptr_t primitive_buffer )
 	{
+		run_generate_primitives( m_generate_primitives, thisptr, scene_object, scene_view, primitive_buffer );
+	}
+
+	void __fastcall cheat::generate_primitives_base( std::uintptr_t thisptr, std::uintptr_t scene_object, std::uintptr_t scene_view, std::uintptr_t primitive_buffer )
+	{
+		run_generate_primitives( m_generate_primitives_base, thisptr, scene_object, scene_view, primitive_buffer );
+	}
+
+	// Shared by both generate-primitives hooks. Each passes the hook it came in through, so the original that chams
+	// re-run and fall back to is the one belonging to that object's desc.
+	void cheat::run_generate_primitives( hooking::jmp& hook, std::uintptr_t thisptr, std::uintptr_t scene_object, std::uintptr_t scene_view, std::uintptr_t primitive_buffer )
+	{
 		diag::exception_scope exception_scope{ "chams: generate primitives" };
 
 		// Chams replace the engine's own primitive submission, so a handled object must not be drawn twice.
@@ -770,7 +790,7 @@ namespace hooks {
 				return;
 			}
 
-			const auto original = m_generate_primitives.original<void( __fastcall* )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t )>( );
+			const auto original = hook.original<void( __fastcall* )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t )>( );
 
 			if ( features::esp::player::g_chams.on_generate_primitives( owner_entity, owner_hash, scene_object, primitive_buffer, original, thisptr, scene_view ) )
 			{
@@ -800,7 +820,7 @@ namespace hooks {
 			return;
 		}
 
-		m_generate_primitives.call<void>( thisptr, scene_object, scene_view, primitive_buffer );
+		hook.call<void>( thisptr, scene_object, scene_view, primitive_buffer );
 	}
 
 	std::uintptr_t __fastcall cheat::parse_report_hit( std::uintptr_t thisptr, std::uint8_t deleting )
@@ -898,6 +918,35 @@ namespace hooks {
 		}
 
 		return m_render_crosshair.call<bool>( a1 );
+	}
+
+	void __fastcall cheat::viewmodel_get_offset_fov( float* offset, float* fov, bool clamp )
+	{
+		m_viewmodel_get_offset_fov.call<void>( offset, fov, clamp );
+		apply_viewmodel_adjust( offset, fov );
+	}
+
+	void __fastcall cheat::viewmodel_get_offset_fov_pawn( std::uintptr_t pawn, float* offset, float* fov )
+	{
+		m_viewmodel_get_offset_fov_pawn.call<void>( pawn, offset, fov );
+		apply_viewmodel_adjust( offset, fov );
+	}
+
+	// The game clamps the cvars on the way out (fov 60..68), so the adjusted values go in after it rather than into
+	// the cvars, which also keeps them out of the player's saved config. Both readers get the same values: the pawn
+	// one positions and projects the viewmodel, the other feeds the copy the game keeps alongside it.
+	void cheat::apply_viewmodel_adjust( float* offset, float* fov )
+	{
+		const auto& cfg = settings::g_misc.m_viewmodel_adjust;
+		if ( !cfg.enabled.value || !offset || !fov )
+		{
+			return;
+		}
+
+		offset[ 0 ] = cfg.offset_x.value;
+		offset[ 1 ] = cfg.offset_y.value;
+		offset[ 2 ] = cfg.offset_z.value;
+		*fov = cfg.fov.value;
 	}
 
 	float __fastcall cheat::prepare_scene_material( std::uintptr_t material, void* a2, float a3 )

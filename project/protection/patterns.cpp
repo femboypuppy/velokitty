@@ -176,6 +176,13 @@ namespace patterns {
 		::protection::addresses::address_type::pattern,
 		"scenesystem.dll:488D05*????????488907488B7C2448+20~");
 
+	// CBaseSceneObjectDesc vtable slot 4. Since the Oct 1 2026 build animatable models (players, viewmodel arms and
+	// weapon, dropped weapons) generate their primitives here instead of through the CSceneObjectDesc slot above.
+	const ::protection::addresses::address_t& generate_primitives_base = ADDRESS_IMPL(
+		::protection::addresses::hash("scenesystem.dll:4533F648895C2430488D05*????????48896C2438488901+20~"),
+		::protection::addresses::address_type::pattern,
+		"scenesystem.dll:4533F648895C2430488D05*????????48896C2438488901+20~");
+
 	// Aim punch evaluated at a given tick and fraction. The weapon fire code calls this with the shot's own
 	// time and adds the result to the view angles before hashing the spread seed; get_aim_punch below is the
 	// render-time evaluation the camera uses.
@@ -654,6 +661,20 @@ namespace patterns {
 		::protection::addresses::address_type::pattern,
 		"client.dll:488D0D*????????48C1E006");
 
+	// Reads viewmodel_offset_x/y/z and viewmodel_fov, then clamps them (fov to 60..68) -- the only caller always asks
+	// for the clamp, so a value outside it can never come from the cvars.
+	const ::protection::addresses::address_t& viewmodel_get_offset_fov = ADDRESS_IMPL(
+		::protection::addresses::hash("client.dll:48895C241048896C2420565741564883EC20488BF9410FB6D8488D0D????????488BF2E8"),
+		::protection::addresses::address_type::pattern,
+		"client.dll:48895C241048896C2420565741564883EC20488BF9410FB6D8488D0D????????488BF2E8");
+
+	// The per-pawn version the viewmodel is actually positioned and projected with: takes a spectated player's
+	// networked offsets, or the cvars for your own, and clamps them the same way with no way to opt out.
+	const ::protection::addresses::address_t& viewmodel_get_offset_fov_pawn = ADDRESS_IMPL(
+		::protection::addresses::hash("client.dll:4055535641564157488BEC4883EC204D8BF84C8BF2488BF1E8"),
+		::protection::addresses::address_type::pattern,
+		"client.dll:4055535641564157488BEC4883EC204D8BF84C8BF2488BF1E8");
+
 	const ::protection::addresses::address_t& viewmodel_update_mesh = ADDRESS_IMPL(
 		::protection::addresses::hash("client.dll:>E8????????498D8D??????????????488D5424"),
 		::protection::addresses::address_type::pattern,
@@ -710,9 +731,9 @@ namespace patterns {
 		"client.dll:>E8????????498D8C2408060000");
 
 	const ::protection::addresses::address_t& weapon_update_skin = ADDRESS_IMPL(
-		::protection::addresses::hash("client.dll:4055534157488DAC24????????4881EC????????488B05????????440FB6FA488BD9"),
+		::protection::addresses::hash("client.dll:4055564157488D6C24??4881EC????????488B05????????440FB6FA488BF1807858000F84"),
 		::protection::addresses::address_type::pattern,
-		"client.dll:4055534157488DAC24????????4881EC????????488B05????????440FB6FA488BD9");
+		"client.dll:4055564157488D6C24??4881EC????????488B05????????440FB6FA488BF1807858000F84");
 
 	const ::protection::addresses::address_t& econ_item_view_set_attribute = ADDRESS_IMPL(
 		::protection::addresses::hash("client.dll:40534883EC20488BD94881C108020000"),

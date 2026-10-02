@@ -79,8 +79,10 @@ namespace features::movement {
 		}
 
 		const auto wants_stop = features::combat::g_rage.should_stop( ) || features::misc::g_projectile_trajectory.should_stop( );
+		// Auto strafe on a server it cannot steer on (see test_strafer::is_active) strafes this way instead.
+		const auto stands_in_for_strafer = settings::g_movement.m_test_strafer.enabled.value && !features::movement::g_test_strafer.is_active( );
 
-		if ( !settings::g_movement.airstrafe.value && !wants_stop || features::combat::g_rage.is_firing_this_tick( ) )
+		if ( !settings::g_movement.airstrafe.value && !stands_in_for_strafer && !wants_stop || features::combat::g_rage.is_firing_this_tick( ) )
 		{
 			g_diag.airstrafe_off_or_firing.fetch_add( 1, std::memory_order_relaxed );
 			return;

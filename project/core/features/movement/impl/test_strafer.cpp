@@ -121,7 +121,9 @@ namespace features::movement {
 			return false;
 		}
 
-		return CONVAR ("sv_quantize_movement_input")->get<bool>( );
+		// It steers with yaw-only subtick steps, which the server ignores unless subtick view angles count
+		// toward movement.
+		return CONVAR ("sv_quantize_movement_input")->get<bool>( ) && CONVAR ("sv_subtick_movement_view_angles")->get<bool>( );
 	}
 
 	math::vector2 test_strafer::movement_from_buttons( std::uintptr_t pressed )

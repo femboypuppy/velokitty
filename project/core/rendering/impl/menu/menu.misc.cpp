@@ -259,12 +259,12 @@ namespace rendering {
 
 				xui::checkbox( "auto strafe", mov.m_test_strafer.enabled );
 
-				// The quantized maths is meaningless when the server is not quantizing, so the
-				// feature no-ops there — most local listen servers have it off. Say so instead of
-				// looking enabled and doing nothing.
+				// The quantized maths is meaningless when the server is not quantizing, and its yaw steps are
+				// ignored when the server drops subtick view angles. Airstrafe strafes in its place there, so
+				// say which one is running instead of looking enabled and doing nothing.
 				if ( mov.m_test_strafer.enabled.value && !features::movement::g_test_strafer.is_active( ) )
 				{
-					xui::text( "requires sv_quantize_movement_input", tokens::col_text_dim );
+					xui::text( "server blocks it, using airstrafe", tokens::col_text_dim );
 				}
 
 				xui::checkbox( "jumpbug", mov.jumpbug );
@@ -416,7 +416,7 @@ namespace rendering {
 					xui::slider_float( "offset x", vm.offset_x, -10.0f, 10.0f, "%.1f" );
 					xui::slider_float( "offset y", vm.offset_y, -10.0f, 10.0f, "%.1f" );
 					xui::slider_float( "offset z", vm.offset_z, -10.0f, 10.0f, "%.1f" );
-					xui::slider_float( "fov", vm.fov, 54.0f, 90.0f, "%.0f" );
+					xui::slider_float( "fov", vm.fov, 30.0f, 90.0f, "%.0f" );
 					xui::end_popup( );
 				}
 

@@ -6,7 +6,7 @@ namespace features::movement {
 	/// bails out or actually does its work, so a feature that "does nothing" shows *which* gate stopped it.
 	struct diagnostics
 	{
-		std::atomic<std::uint32_t> bhop_calls{}, bhop_autobhop_convar{}, bhop_no_jump_key{}, bhop_on_ground{}, bhop_air_jump_held{}, bhop_no_landing{}, bhop_scheduled{};
+		std::atomic<std::uint32_t> bhop_calls{}, bhop_autobhop_convar{}, bhop_no_jump_key{}, bhop_on_ground{}, bhop_air_jump_held{}, bhop_no_landing{}, bhop_scheduled{}, bhop_retry{};
 		std::atomic<std::uint32_t> airstrafe_calls{}, airstrafe_shift_air{}, airstrafe_off_or_firing{}, airstrafe_ground{}, airstrafe_sprint{}, airstrafe_ran{};
 		std::atomic<std::uint32_t> strafer_calls{}, strafer_inactive{}, strafer_ground{}, strafer_ran{};
 	};
@@ -15,7 +15,30 @@ namespace features::movement {
 	class bhop
 	{
 	public:
-		void on_create_move( systems::input::usercmd* cmd ) const;
+		void on_create_move( systems::input::usercmd* cmd );
+
+	private:
+		void reset( );
+		[[nodiscard]] bool press( systems::input::usercmd* cmd, int tick, float when );
+
+		int m_command{};
+		// Jump has been held since the air, so every press of this cycle is ours to time.
+		bool m_cycle{};
+		int m_ground_tick{ -1 };
+		int m_pending_tick{ -1 };
+		float m_pending_when{};
+		double m_last_press{ -1.0e9 };
+
+		// The last press made for a landing, written to the log once the jump it made is in the air.
+		struct hop_record
+		{
+			const char* path{};
+			float snap{};
+			float contact{};
+			float speed{};
+			float when{};
+			bool logged{ true };
+		} m_hop{};
 	};
 
 	class airstrafe

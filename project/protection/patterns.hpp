@@ -39,6 +39,7 @@ namespace patterns {
 	extern const ::protection::addresses::address_t& game_scene_node_set_skeleton;
 	extern const ::protection::addresses::address_t& game_trace_manager;
 	extern const ::protection::addresses::address_t& generate_primitives;
+	extern const ::protection::addresses::address_t& generate_primitives_base;
 	extern const ::protection::addresses::address_t& aim_punch_at_time;
 	extern const ::protection::addresses::address_t& get_aim_punch;
 	extern const ::protection::addresses::address_t& get_bone_index;
@@ -134,6 +135,8 @@ namespace patterns {
 	extern const ::protection::addresses::address_t& update_fov_sensitivity;
 	extern const ::protection::addresses::address_t& utl_vector_push;
 	extern const ::protection::addresses::address_t& view_matrix;
+	extern const ::protection::addresses::address_t& viewmodel_get_offset_fov;
+	extern const ::protection::addresses::address_t& viewmodel_get_offset_fov_pawn;
 	extern const ::protection::addresses::address_t& viewmodel_update_mesh;
 	extern const ::protection::addresses::address_t& weapon_calculate_spread;
 	extern const ::protection::addresses::address_t& weapon_get_entity_index;

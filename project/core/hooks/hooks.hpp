@@ -30,6 +30,7 @@ namespace hooks {
 		static bool __fastcall is_glowing( std::uintptr_t glow_property );
 		static void __fastcall get_glow_color( std::uintptr_t glow_property, float* color );
 		static void __fastcall generate_primitives( std::uintptr_t thisptr, std::uintptr_t scene_object, std::uintptr_t scene_view, std::uintptr_t primitive_buffer );
+		static void __fastcall generate_primitives_base( std::uintptr_t thisptr, std::uintptr_t scene_object, std::uintptr_t scene_view, std::uintptr_t primitive_buffer );
 		static std::uintptr_t __fastcall parse_report_hit( std::uintptr_t thisptr, std::uint8_t deleting );
 		static std::uintptr_t __fastcall setup_fog( __m128i* output, int* mode );
 		static std::uintptr_t __fastcall set_shader_param( __m128i* map, std::uint32_t hash, __m128i* value );
@@ -38,6 +39,8 @@ namespace hooks {
 		static void __fastcall update_fov_sensitivity( std::uintptr_t thisptr );
 		static void __fastcall render_scope( std::uintptr_t a1, std::uintptr_t a2 );
 		static bool __fastcall render_crosshair( std::uintptr_t a1 );
+		static void __fastcall viewmodel_get_offset_fov( float* offset, float* fov, bool clamp );
+		static void __fastcall viewmodel_get_offset_fov_pawn( std::uintptr_t pawn, float* offset, float* fov );
 		static float __fastcall prepare_scene_material( std::uintptr_t material, void* a2, float a3 );
 		static void __fastcall post_network_data_received( std::uintptr_t thisptr );
 		static bool __fastcall draw_overhead( std::uintptr_t pawn, std::uint32_t player_slot );
@@ -58,6 +61,9 @@ namespace hooks {
 		static char __fastcall set_info( std::uintptr_t rcx, std::uintptr_t a2 );
 
 	private:
+		static void run_generate_primitives( hooking::jmp& hook, std::uintptr_t thisptr, std::uintptr_t scene_object, std::uintptr_t scene_view, std::uintptr_t primitive_buffer );
+		static void apply_viewmodel_adjust( float* offset, float* fov );
+
 		inline static hooking::jmp m_present{};
 		inline static hooking::jmp m_resize_buffers{};
 		inline static hooking::jmp m_wnd_proc{};
@@ -76,6 +82,7 @@ namespace hooks {
 		inline static hooking::jmp m_is_glowing{};
 		inline static hooking::jmp m_get_glow_color{};
 		inline static hooking::jmp m_generate_primitives{};
+		inline static hooking::jmp m_generate_primitives_base{};
 		inline static hooking::jmp m_parse_report_hit{};
 		inline static hooking::jmp m_setup_fog{};
 		inline static hooking::jmp m_set_shader_param{};
@@ -84,6 +91,8 @@ namespace hooks {
 		inline static hooking::jmp m_update_fov_sensitivity{};
 		inline static hooking::jmp m_render_scope{};
 		inline static hooking::jmp m_render_crosshair{};
+		inline static hooking::jmp m_viewmodel_get_offset_fov{};
+		inline static hooking::jmp m_viewmodel_get_offset_fov_pawn{};
 		inline static hooking::jmp m_prepare_scene_material{};
 		inline static hooking::jmp m_post_network_data_received{};
 		inline static hooking::jmp m_draw_overhead{};

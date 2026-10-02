@@ -266,6 +266,8 @@ namespace features::combat {
 
 			float inaccuracy{};
 			float spread{};
+			// Vertical speed the inaccuracy above was predicted at. Logged next to the game's own at fire time.
+			float inaccuracy_velocity_z{};
 		};
 
 		void update( );

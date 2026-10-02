@@ -166,6 +166,7 @@ namespace features::combat {
 
 		ctx.spread = out.spread;
 		ctx.inaccuracy = out.predicted_inaccuracy;
+		ctx.inaccuracy_velocity_z = out.velocity.z;
 
 		out.view_angles = systems::g_input.get_view_angles( );
 		out.on_ground = ( prestate.flags & cstypes::entity_flags::on_ground ) != 0;
@@ -2081,14 +2082,15 @@ namespace features::combat {
 		// punch taken off it, the angle the command actually carries, and the ticks stamped onto the input.
 		diag::writef(
 			diag::level::info,
-			"fire detail: no_spread=%d silent=%d subtick=%d forced=%d | eye=(%.1f %.1f %.1f) uninterp=%d player_tick=%d frac=%.3f lerp=%d+%.3f | aim=(%.2f %.2f %.2f) punch=(%.3f %.3f %.3f) render_punch=(%.3f %.3f) cmd=(%.2f %.2f) | tick_base=%d current=%d record_age=%d hp=%d | solver cells=%d margin=%.3f | pen=%d hitbox=%d dmg=%.0f",
+			"fire detail: no_spread=%d silent=%d subtick=%d forced=%d | eye=(%.1f %.1f %.1f) uninterp=%d player_tick=%d frac=%.3f lerp=%d+%.3f | aim=(%.2f %.2f %.2f) punch=(%.3f %.3f %.3f) render_punch=(%.3f %.3f) cmd=(%.2f %.2f) | tick_base=%d current=%d record_age=%d hp=%d | solver cells=%d margin=%.3f | pen=%d hitbox=%d dmg=%.0f | inacc=%.5f at vz=%.1f",
 			config.no_spread.value ? 1 : 0, config.silent.value ? 1 : 0, subtick_attack ? 1 : 0, was_forced ? 1 : 0,
 			shoot_eye.x, shoot_eye.y, shoot_eye.z,
 			tgt.hit.source_eye.is_uninterpolated ? 1 : 0, tgt.hit.source_eye.player_tick, tgt.hit.source_eye.player_frac, tgt.hit.source_eye.lerp_ticks_int, tgt.hit.source_eye.lerp_ticks_frac,
 			aim_angle.x, aim_angle.y, aim_angle.z, aim_punch.x, aim_punch.y, aim_punch.z, render_punch.x, render_punch.y, command_aim.x, command_aim.y,
 			tick_base, shared_ctx.current_tick, shared_ctx.current_tick - tgt.hit.record->tick, tgt.hit.health,
 			solution.evaluated, solution.margin,
-			tgt.hit.penetrated ? 1 : 0, tgt.hit.hitbox_index, tgt.hit.damage );
+			tgt.hit.penetrated ? 1 : 0, tgt.hit.hitbox_index, tgt.hit.damage,
+			shared_ctx.inaccuracy, shared_ctx.inaccuracy_velocity_z );
 	}
 
 	void rage::fire_melee( systems::input::usercmd* cmd, const target& tgt, const systems::local::snapshot& local )

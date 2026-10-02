@@ -475,8 +475,12 @@ namespace features::misc {
 				it->server_confirmed = true;
 
 				// The game's own fire-time inaccuracy next to the one the shot was aimed with. With no spread on,
-				// any difference between the two turns straight into aim error.
-				diag::writef( diag::level::info, "fire inaccuracy: predicted=%.5f game=%.5f diff=%+.5f", it->predicted_inaccuracy, inaccuracy, inaccuracy - it->predicted_inaccuracy );
+				// any difference between the two turns straight into aim error. Standing it matches exactly; in
+				// the air it drifts 1-3%, and the vertical speed and penalty the game fired with show which
+				// input the prediction has wrong.
+				const auto fire_velocity = memory::read<math::vector3>( owner + SCHEMA( "C_BaseEntity", "m_vecAbsVelocity"_hash ) );
+				const auto fire_penalty = memory::read<float>( weapon + SCHEMA( "C_CSWeaponBase", "m_fAccuracyPenalty"_hash ) );
+				diag::writef( diag::level::info, "fire inaccuracy: predicted=%.5f game=%.5f diff=%+.5f | game vz=%.1f penalty=%.5f", it->predicted_inaccuracy, inaccuracy, inaccuracy - it->predicted_inaccuracy, fire_velocity.z, fire_penalty );
 				break;
 			}
 		}
@@ -555,11 +559,6 @@ namespace features::misc {
 			return "death";
 		}
 
-		if ( shot.server_confirmed && std::fabsf( shot.server_inaccuracy - shot.predicted_inaccuracy ) > 0.003f )
-		{
-			return "prediction error";
-		}
-
 		if ( shot.server_shoot_position_confirmed && ( shot.server_shoot_position - shot.shoot_position ).length_sqr( ) > 1.0f )
 		{
 			return "shoot position mismatch";
@@ -607,8 +606,18 @@ namespace features::misc {
 		// If the server impact ray misses the saved hitboxes, weapon spread is
 		// already sufficient to explain the miss. Do not blame lag compensation
 		// merely because it passed within several units of the target.
+		//
+		// An inaccuracy that differed from the predicted one only matters here, where the bullet actually left the
+		// line. This check used to come first and labelled every airborne miss "prediction error" -- the predicted
+		// and fire-time values differ by 1-3% in the air on almost every shot, including ones whose bullet landed
+		// within 0.1 degrees of the aim.
 		if ( ray_dist > 1.0f )
 		{
+			if ( shot.server_confirmed && std::fabsf( shot.server_inaccuracy - shot.predicted_inaccuracy ) > 0.003f )
+			{
+				return "prediction error";
+			}
+
 			return "spread";
 		}
 
