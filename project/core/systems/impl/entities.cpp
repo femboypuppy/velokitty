@@ -259,6 +259,9 @@ namespace systems {
 		case "CCSPlayerController"_hash:
 			return type::player;
 
+		case "C_CSTeam"_hash:
+			return type::team;
+
 		case "C_AK47"_hash:
 		case "C_WeaponM4A1"_hash:
 		case "C_WeaponM4A1Silencer"_hash:

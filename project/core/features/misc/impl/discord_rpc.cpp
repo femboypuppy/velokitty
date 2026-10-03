@@ -2,6 +2,7 @@
 #include <utilities/logging/logging.hpp>
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
+#include <protection/game_addresses.hpp>
 #include <core/settings.hpp>
 #include <core/systems/systems.hpp>
 #include <core/rendering/rendering.hpp>
@@ -64,6 +65,65 @@ namespace features::misc {
 					return name;
 			}
 			return {};
+		}
+
+		/// A middle dot between parts, spelled as UTF-8 bytes so it doesn't depend on the source encoding.
+		constexpr auto k_separator { " \xC2\xB7 " };
+
+		/// The controller's rank type is what the scoreboard keys its rank display on: 11 is a Premier rating,
+		/// so it is the one thing that tells Premier apart from a plain competitive match (both are 0/1).
+		constexpr std::int8_t k_rank_type_premier { 11 };
+
+		struct mode_info {
+			std::string name {};
+			bool has_rounds {};
+		};
+
+		[[nodiscard]] mode_info current_mode (std::uintptr_t controller) {
+			const auto game_type_var = CONVAR ("game_type");
+			const auto game_mode_var = CONVAR ("game_mode");
+			if (!game_type_var || !game_mode_var)
+				return {};
+
+			const auto game_type = game_type_var->get<int> ();
+			const auto game_mode = game_mode_var->get<int> ();
+
+			if (game_type == 0) {
+				switch (game_mode) {
+				case 0: return { "casual", true };
+				case 1: {
+					const auto rank_type = memory::safe_read<std::int8_t> (controller + SCHEMA ("CCSPlayerController", "m_iCompetitiveRankType"_hash)).value_or (0);
+					return { rank_type == k_rank_type_premier ? "premier" : "competitive", true };
+				}
+				case 2: return { "wingman", true };
+				}
+			}
+			else if (game_type == 1) {
+				switch (game_mode) {
+				case 0: return { "arms race", false };
+				case 2: return { "deathmatch", false };
+				}
+			}
+			return {};
+		}
+
+		/// Round wins per side, from the C_CSTeam entities. Anything outside a sane range is treated as unread,
+		/// so a moved field shows no score rather than a nonsense one.
+		[[nodiscard]] std::optional<std::pair<int, int>> team_scores () {
+			std::optional<int> ct {}, t {};
+			for (const auto& team : systems::g_entities.get_by_type (systems::entities::type::team)) {
+				const auto number = memory::safe_read<int> (team.ptr + SCHEMA ("C_BaseEntity", "m_iTeamNum"_hash)).value_or (0);
+				const auto score = memory::safe_read<int> (team.ptr + SCHEMA ("C_Team", "m_iScore"_hash)).value_or (-1);
+				if (score < 0 || score > 999)
+					continue;
+				if (number == 3)
+					ct = score;
+				else if (number == 2)
+					t = score;
+			}
+			if (!ct || !t)
+				return std::nullopt;
+			return std::pair { *ct, *t };
 		}
 
 		class pipe {
@@ -174,17 +234,63 @@ namespace features::misc {
 			m_thread = std::jthread ([this] (std::stop_token stop) { run (stop); });
 		}
 
-		// Map name and team are game-thread state; the worker only ever sees these copies.
-		const auto local = systems::g_local.get ();
-		if (local.controller && rendering::g_widgets.s_map_name.empty ())
-			rendering::g_widgets.s_map_name = map_from_global_vars ();
-		const auto& map = rendering::g_widgets.s_map_name;
+		// All of this is game-thread state; the worker only ever sees the finished strings. The controller is
+		// read directly rather than through g_local, which drops to nothing whenever there is no pawn -- a
+		// spectator, or the moment between joining and spawning -- and that read as the main menu.
+		const auto controller = memory::safe_read<std::uintptr_t> (addresses::globals::local_player_controller).value_or (0);
 
 		std::string details {};
 		std::string state {};
-		if (local.controller) {
-			details = map.empty () ? "in a match" : "playing " + map;
-			state = local.team == 3 ? "counter-terrorist" : local.team == 2 ? "terrorist" : "spectating";
+		if (controller) {
+			if (rendering::g_widgets.s_map_name.empty ())
+				rendering::g_widgets.s_map_name = map_from_global_vars ();
+			const auto& map = rendering::g_widgets.s_map_name;
+
+			// details: "wingman · de_vertigo"
+			const auto mode = current_mode (controller);
+			if (!mode.name.empty ())
+				details = map.empty () ? mode.name : mode.name + k_separator + map;
+			else
+				details = map.empty () ? "in a match" : "playing " + map;
+
+			// state: "ct 7 - 5 t · alive", own side first
+			const auto team = memory::safe_read<int> (controller + SCHEMA ("C_BaseEntity", "m_iTeamNum"_hash)).value_or (0);
+			const auto alive = memory::safe_read<bool> (controller + SCHEMA ("CCSPlayerController", "m_bPawnIsAlive"_hash)).value_or (false);
+
+			const auto game_rules = memory::safe_read<std::uintptr_t> (addresses::globals::game_rules).value_or (0);
+			const auto warmup = game_rules && memory::safe_read<bool> (game_rules + SCHEMA ("C_CSGameRules", "m_bWarmupPeriod"_hash)).value_or (false);
+			const auto match_over = game_rules && memory::safe_read<int> (game_rules + SCHEMA ("C_CSGameRules", "m_gamePhase"_hash)).value_or (0) == 5;
+
+			std::vector<std::string> parts {};
+			if (warmup)
+				parts.emplace_back ("warmup");
+			else if (match_over)
+				parts.emplace_back ("match over");
+
+			const auto scores = mode.has_rounds && !warmup ? team_scores () : std::nullopt;
+			if (team == 2 || team == 3) {
+				if (scores) {
+					parts.emplace_back (team == 3
+						? std::format ("ct {} - {} t", scores->first, scores->second)
+						: std::format ("t {} - {} ct", scores->second, scores->first));
+				}
+				else if (parts.empty ()) {
+					parts.emplace_back (team == 3 ? "counter-terrorist" : "terrorist");
+				}
+				if (!match_over)
+					parts.emplace_back (alive ? "alive" : "dead");
+			}
+			else {
+				parts.emplace_back ("spectating");
+				if (scores)
+					parts.emplace_back (std::format ("ct {} - {} t", scores->first, scores->second));
+			}
+
+			for (const auto& part : parts) {
+				if (!state.empty ())
+					state += k_separator;
+				state += part;
+			}
 		} else {
 			details = "in the main menu";
 		}

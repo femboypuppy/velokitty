@@ -187,7 +187,8 @@ namespace systems {
 			unknown,
 			player,
 			item,
-			projectile
+			projectile,
+			team
 		};
 
 		struct cached
