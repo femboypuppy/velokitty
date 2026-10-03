@@ -1370,7 +1370,11 @@ namespace hooks {
 		diag::guard( "set_info", [ & ]
 		{
 			const auto& cfg = settings::g_misc.m_name_changer;
-			const auto should_override = cfg.clantag.value || cfg.override_name.value || features::misc::other::s_name_change_pending;
+			// The name changer always runs now (the aimwhere marker rides on the name), so whenever it has a name
+			// queued, that name wins. Gating on the clan tag / override toggles let a deferred "setinfo name" slip
+			// through untouched once s_name_change_pending had already dropped back to false.
+			const auto should_override = cfg.clantag.value || cfg.override_name.value || features::misc::other::s_name_change_pending
+				|| !features::misc::other::s_display_name.empty( );
 			if ( !should_override || !a2 )
 			{
 				return;

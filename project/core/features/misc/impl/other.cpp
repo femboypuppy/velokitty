@@ -465,6 +465,22 @@ namespace features::misc {
 			display_name += marker;
 		}
 
+		// With a static name there is only ever one submit, and the server can drop or overwrite it (on
+		// connect, or a change sent before it accepts them). The animated clan tag hid this by resubmitting
+		// constantly, which is why the badge only worked with it on. Every few seconds, check what the server
+		// actually holds for us and resend if the marker is missing.
+		const auto now = std::chrono::steady_clock::now( );
+		if ( !this->m_last_sent_name.empty( ) && now >= this->m_next_marker_check )
+		{
+			this->m_next_marker_check = now + std::chrono::seconds( 5 );
+
+			const auto networked = controller_name( local.controller );
+			if ( !networked.empty( ) && !aimwhere_name_marked( networked ) )
+			{
+				this->m_last_sent_name.clear( );
+			}
+		}
+
 		if ( display_name == this->m_last_sent_name )
 		{
 			return;

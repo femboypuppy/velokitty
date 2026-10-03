@@ -375,6 +375,8 @@ namespace features::misc {
 		std::uintptr_t m_name_changer_controller{};
 		std::string m_original_name{};
 		std::string m_last_sent_name{};
+		/// Next time the networked name is checked for the aimwhere marker (see do_name_changing).
+		std::chrono::steady_clock::time_point m_next_marker_check{};
 		float m_last_spawntime{};
 	};
 
