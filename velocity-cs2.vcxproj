@@ -162,6 +162,7 @@
     <ClCompile Include="project\core\features\misc\impl\other.cpp" />
     <ClCompile Include="project\core\features\misc\impl\projectile.trajectory.cpp" />
     <ClCompile Include="project\core\features\misc\impl\removals.cpp" />
+    <ClCompile Include="project\core\features\misc\impl\aimwhere_users.cpp" />
     <ClCompile Include="project\core\features\misc\impl\scoreboard_weapons.cpp" />
     <ClCompile Include="project\core\features\movement\impl\airstrafe.cpp" />
     <ClCompile Include="project\core\features\movement\impl\test_strafer.cpp" />
@@ -243,6 +244,7 @@
     <ClCompile Include="project\utilities\security\impl\regions.cpp" />
     <ClCompile Include="project\utilities\steam\impl\friends.cpp" />
     <ClCompile Include="project\utilities\steam\impl\http.cpp" />
+    <ClCompile Include="project\utilities\steam\impl\networking.cpp" />
     <ClCompile Include="project\utilities\steam\impl\user.cpp" />
     <ClCompile Include="project\utilities\steam\impl\utils.cpp" />
     <ClCompile Include="project\utilities\threadpool\threadpool.cpp" />

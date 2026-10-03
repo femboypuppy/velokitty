@@ -34,6 +34,9 @@ namespace hooks {
 			{ &m_light_scene_object, &light_scene_object, xs ("light_scene_object"), PATTERN (patterns::light_scene_object) },
 			{ &m_draw_scene_object_array, &draw_scene_object_array, xs ("draw_scene_object_array"), PATTERN (patterns::draw_scene_object_array) },
 			{ &m_draw_scene_object, &draw_scene_object, xs ("draw_scene_object"), PATTERN (patterns::draw_scene_object) },
+		{ &m_draw_aggregate_scene_object, &draw_aggregate_scene_object, xs ("draw_aggregate_scene_object"), PATTERN (patterns::draw_aggregate_scene_object) },
+		{ &m_draw_animatable_scene_object, &draw_animatable_scene_object, xs ("draw_animatable_scene_object"), PATTERN (patterns::draw_animatable_scene_object) },
+		{ &m_draw_instanced_scene_object, &draw_instanced_scene_object, xs ("draw_instanced_scene_object"), PATTERN (patterns::draw_instanced_scene_object) },
 			{ &m_is_glowing, &is_glowing, xs ("is_glowing"), PATTERN (patterns::is_glowing) },
 			{ &m_get_glow_color, &get_glow_color, xs ("get_glow_color"), PATTERN (patterns::get_glow_color) },
 			{ &m_generate_primitives, &generate_primitives, xs ("generate_primitives"), PATTERN (patterns::generate_primitives) },
@@ -101,6 +104,9 @@ namespace hooks {
 		m_light_scene_object.reset( );
 		m_draw_scene_object_array.reset( );
 		m_draw_scene_object.reset( );
+		m_draw_aggregate_scene_object.reset( );
+		m_draw_animatable_scene_object.reset( );
+		m_draw_instanced_scene_object.reset( );
 		m_is_glowing.reset( );
 		m_get_glow_color.reset( );
 		m_generate_primitives.reset( );
@@ -265,6 +271,7 @@ namespace hooks {
 				diag::set_exception_phase( "frame_stage_notify: world and misc" );
 				diag::guard( "frame_stage_notify: scene", [ ] { features::world::g_scene.on_frame_stage_notify( ); } );
 				diag::guard( "frame_stage_notify: weather", [ ] { features::world::g_weather.on_frame_stage_notify( ); } );
+		diag::guard( "frame_stage_notify: smoke", [ ] { features::world::g_smoke.on_frame_stage_notify( ); } );
 				diag::guard( "frame_stage_notify: other", [ ] { features::misc::g_other.on_frame_stage_notify( ); } );
 				diag::guard( "frame_stage_notify: impacts", [ ] { features::misc::g_impacts.on_frame_stage_notify( ); } );
 			}
@@ -323,6 +330,7 @@ namespace hooks {
 
 		diag::set_exception_phase( "frame_stage_notify: scoreboard and kill feed" );
 		diag::guard( "frame_stage_notify: scoreboard", [ ] { features::misc::g_scoreboard_weapons.on_frame_stage_notify( ); } );
+		diag::guard( "frame_stage_notify: aimwhere users", [ ] { features::misc::g_aimwhere_users.on_frame_stage_notify( ); } );
 		diag::guard( "frame_stage_notify: kill feed", [ ] { features::misc::g_other.do_kill_feed_preservation( ); } );
 	}
 	void __fastcall cheat::create_move( std::uintptr_t thisptr, int slot, bool active )
@@ -668,6 +676,36 @@ namespace hooks {
 		return m_draw_scene_object.call<std::uintptr_t>( a1, a2, batch, batch_count, a5, a6, a7, a8 );
 	}
 
+	std::uintptr_t __fastcall cheat::draw_aggregate_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, std::uintptr_t a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8, std::uintptr_t a9, std::uintptr_t a10, std::uintptr_t a11, std::uintptr_t a12 )
+	{
+		{
+			diag::exception_scope exception_scope{ "world: aggregate tint" };
+			diag::guard( "draw_aggregate_scene_object", [ & ] { features::world::g_scene.on_draw_world_meshes( batch, batch_count, features::world::scene::mesh_source::aggregate ); } );
+		}
+
+		return m_draw_aggregate_scene_object.call<std::uintptr_t>( a1, a2, batch, batch_count, a5, a6, a7, a8, a9, a10, a11, a12 );
+	}
+
+	std::uintptr_t __fastcall cheat::draw_animatable_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, std::uintptr_t a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8, std::uintptr_t a9, std::uintptr_t a10, std::uintptr_t a11, std::uintptr_t a12 )
+	{
+		{
+			diag::exception_scope exception_scope{ "world: animatable tint" };
+			diag::guard( "draw_animatable_scene_object", [ & ] { features::world::g_scene.on_draw_world_meshes( batch, batch_count, features::world::scene::mesh_source::animatable ); } );
+		}
+
+		return m_draw_animatable_scene_object.call<std::uintptr_t>( a1, a2, batch, batch_count, a5, a6, a7, a8, a9, a10, a11, a12 );
+	}
+
+	std::uintptr_t __fastcall cheat::draw_instanced_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, std::uintptr_t a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8, std::uintptr_t a9, std::uintptr_t a10, std::uintptr_t a11, std::uintptr_t a12 )
+	{
+		{
+			diag::exception_scope exception_scope{ "world: instanced tint" };
+			diag::guard( "draw_instanced_scene_object", [ & ] { features::world::g_scene.on_draw_world_meshes( batch, batch_count, features::world::scene::mesh_source::instanced ); } );
+		}
+
+		return m_draw_instanced_scene_object.call<std::uintptr_t>( a1, a2, batch, batch_count, a5, a6, a7, a8, a9, a10, a11, a12 );
+	}
+
 	bool __fastcall cheat::is_glowing( std::uintptr_t glow_property )
 	{
 		auto glowing = false;
@@ -790,6 +828,14 @@ namespace hooks {
 				return;
 			}
 
+			// While spectating, the camera sits inside the watched player's head: their own model and gun, and
+			// our first-person arms, would cover the view. Skipping submission is how this hook hides a model.
+			if ( features::misc::g_camera.hides_entity( owner_entity, owner_hash ) )
+			{
+				handled = true;
+				return;
+			}
+
 			const auto original = hook.original<void( __fastcall* )( std::uintptr_t, std::uintptr_t, std::uintptr_t, std::uintptr_t )>( );
 
 			if ( features::esp::player::g_chams.on_generate_primitives( owner_entity, owner_hash, scene_object, primitive_buffer, original, thisptr, scene_view ) )
@@ -889,6 +935,9 @@ namespace hooks {
 			features::misc::g_camera.on_override_view( view_setup );
 			features::misc::g_removals.on_override_view( view_setup );
 			features::combat::g_misc.duckpeek( ).on_override_view( view_setup );
+
+			// Last: spectating replaces the whole camera, whatever the features above did to it.
+			features::misc::g_camera.on_override_view_spectate( view_setup );
 		} );
 	}
 
@@ -1161,6 +1210,7 @@ namespace hooks {
 			features::world::g_weather.on_level_shutdown( );
 			features::misc::g_impacts.on_level_change( );
 			features::misc::g_scoreboard_weapons.on_level_change( );
+			features::misc::g_aimwhere_users.on_level_change( );
 
 			// level_shutdown does the real teardown, but it does not fire for every transition the engine
 			// takes (the first map of a session has nothing to shut down). Repeat the cheap half here: the
@@ -1245,6 +1295,7 @@ namespace hooks {
 	{
 		diag::exception_scope input_scope{ "legit: input event" };
 		diag::guard( "process_input_event", [ & ] { systems::g_legit_input.on_process_input_event( csgo_input, slot ); } );
+		diag::guard( "legit: frame aim", [ & ] { features::combat::g_legit.on_frame_input( csgo_input, slot, frametime ); } );
 
 		m_process_input_event.call<void>( csgo_input, slot, frametime );
 	}

@@ -16,6 +16,9 @@ namespace patterns {
 	extern const ::protection::addresses::address_t& draw_overhead;
 	extern const ::protection::addresses::address_t& draw_scene_object;
 	extern const ::protection::addresses::address_t& draw_scene_object_array;
+	extern const ::protection::addresses::address_t& draw_aggregate_scene_object;
+	extern const ::protection::addresses::address_t& draw_animatable_scene_object;
+	extern const ::protection::addresses::address_t& draw_instanced_scene_object;
 	extern const ::protection::addresses::address_t& draw_skybox_array;
 	extern const ::protection::addresses::address_t& dynamic_light_alloc;
 	extern const ::protection::addresses::address_t& dynamic_light_manager;

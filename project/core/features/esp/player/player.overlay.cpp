@@ -76,9 +76,30 @@ namespace features::esp::player {
 
 			overlay::draw_offsets offsets{};
 
-			if ( cfg.m_box.enabled.value )
+			// Visualise aimbot: solid when the wallbang is there now, pulsing when your movement is about to
+			// reach it. Drawn even with the box switched off, since the box is the cue.
+			std::optional<xdraw::color> wallbang_color{};
+			if ( info.is_other_team && settings::g_combat.m_legitbot.enabled.value && settings::g_combat.m_legitbot.visualize_aimbot.value )
 			{
-				this->add_box( draw_list, bounds, cfg.m_box, info.is_visible );
+				const auto state = combat::g_legit.wallbang_preview( info.pawn );
+				if ( state != combat::legit::wallbang_state::none )
+				{
+					auto c = settings::g_combat.m_legitbot.visualize_aimbot_color.value;
+
+					if ( state == combat::legit::wallbang_state::soon )
+					{
+						const auto t = std::chrono::duration<float>( std::chrono::steady_clock::now( ).time_since_epoch( ) ).count( );
+						const auto pulse = 0.3f + 0.7f * ( 0.5f + 0.5f * std::sinf( t * 8.0f ) );
+						c.a = static_cast< std::uint8_t >( static_cast< float >( c.a ) * pulse );
+					}
+
+					wallbang_color = c;
+				}
+			}
+
+			if ( cfg.m_box.enabled.value || wallbang_color.has_value( ) )
+			{
+				this->add_box( draw_list, bounds, cfg.m_box, info.is_visible, wallbang_color.has_value( ) ? &*wallbang_color : nullptr );
 			}
 
 			if ( cfg.m_skeleton.enabled.value )
@@ -113,9 +134,9 @@ namespace features::esp::player {
 		}
 	}
 
-	void overlay::add_box( xdraw::draw_list& draw_list, const systems::bounds::data& bounds, const settings::esp::player::overlay::box& cfg, bool visible )
+	void overlay::add_box( xdraw::draw_list& draw_list, const systems::bounds::data& bounds, const settings::esp::player::overlay::box& cfg, bool visible, const xdraw::color* highlight )
 	{
-		const auto& color = visible ? cfg.visible_color : cfg.occluded_color;
+		const xdraw::color color = highlight ? *highlight : ( visible ? cfg.visible_color : cfg.occluded_color ).value;
 
 		const auto x = std::floorf( bounds.min.x );
 		const auto y = std::floorf( bounds.min.y );
@@ -129,9 +150,9 @@ namespace features::esp::player {
 			constexpr auto center_brightness{ 0.4f };
 			constexpr auto desaturation{ 0.7f };
 
-			const auto r = color.value.r / 255.0f;
-			const auto g = color.value.g / 255.0f;
-			const auto b = color.value.b / 255.0f;
+			const auto r = color.r / 255.0f;
+			const auto g = color.g / 255.0f;
+			const auto b = color.b / 255.0f;
 			const auto avg = ( r + g + b ) / 3.0f;
 
 			const auto edge_r = r * desaturation + avg * ( 1.0f - desaturation );
@@ -669,6 +690,20 @@ namespace features::esp::player {
 		const auto text_y = std::floorf( bounds.min.y - text_h - 2.0f - offsets.top );
 
 		draw_list.text( text_x, text_y, info.name, cfg.color );
+
+		// Another aimwhere user: the mark sits left of the name in the menu accent, the name stays centred.
+		if ( info.aimwhere_user )
+		{
+			static auto mark_w = 0, mark_h = 0;
+			static const auto mark = xdraw::load_svg( rendering::brand::mark, 12.0f / 32.0f, &mark_w, &mark_h );
+			if ( mark )
+			{
+				const auto mw = static_cast< float >( mark_w );
+				const auto mh = static_cast< float >( mark_h );
+				draw_list.image( std::floorf( text_x - mw - 3.0f ), std::floorf( text_y + ( text_h - mh ) * 0.5f ), mw, mh, mark.Get( ), xui::ctx( ).style.accent.alpha( cfg.color.value.a ) );
+			}
+		}
+
 		offsets.top += text_h + 2.0f;
 
 		//xdraw::pop_font( );
@@ -917,6 +952,8 @@ namespace features::esp::player {
 			info.name = memory::read_string( name_ptr, 128 );
 			std::ranges::transform( info.name, info.name.begin( ), [ ]( unsigned char c ) { return std::tolower( c ); } );
 		}
+
+		info.aimwhere_user = features::misc::g_aimwhere_users.is_user( memory::read<std::uint64_t>( info.controller + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ) );
 
 		const auto money_services = memory::read<std::uintptr_t>( info.controller + SCHEMA( "CCSPlayerController", "m_pInGameMoneyServices"_hash ) );
 		if ( money_services )

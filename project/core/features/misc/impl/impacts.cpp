@@ -107,7 +107,7 @@ namespace features::misc {
 
 		void chat_print_velocity( const char* msg )
 		{
-			chat_print( "[velocity]", k_periwinkle_start_r, k_periwinkle_start_g, k_periwinkle_start_b, k_periwinkle_end_r, k_periwinkle_end_g, k_periwinkle_end_b, msg );
+			chat_print( "[aimwhere]", k_periwinkle_start_r, k_periwinkle_start_g, k_periwinkle_start_b, k_periwinkle_end_r, k_periwinkle_end_g, k_periwinkle_end_b, msg );
 		}
 
 	} // namespace detail

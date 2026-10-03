@@ -61,6 +61,25 @@ namespace patterns {
 		::protection::addresses::address_type::pattern,
 		"scenesystem.dll:488BC4488950??488948??555356574154415541564157488DA8????????4881EC????????0F2970??");
 
+	// The draw calls of the other scene-object classes the map is built from. World colour only hooked
+	// CSceneObjectDesc's, so geometry drawn as aggregates (the bulk of the map), instanced meshes (repeated
+	// props) and animatables (dynamic props) kept their own colour: "only certain parts of the map". All
+	// three take the same 0x70-byte draw primitives with the tint at +0x50.
+	const ::protection::addresses::address_t& draw_aggregate_scene_object = ADDRESS_IMPL(
+		::protection::addresses::hash("scenesystem.dll:4585C90F8E????????488BC4"),
+		::protection::addresses::address_type::pattern,
+		"scenesystem.dll:4585C90F8E????????488BC4");
+
+	const ::protection::addresses::address_t& draw_animatable_scene_object = ADDRESS_IMPL(
+		::protection::addresses::hash("scenesystem.dll:488BC448895010488948085356"),
+		::protection::addresses::address_type::pattern,
+		"scenesystem.dll:488BC448895010488948085356");
+
+	const ::protection::addresses::address_t& draw_instanced_scene_object = ADDRESS_IMPL(
+		::protection::addresses::hash("scenesystem.dll:44894C24204C8944241848894C2408555357"),
+		::protection::addresses::address_type::pattern,
+		"scenesystem.dll:44894C24204C8944241848894C2408555357");
+
 	const ::protection::addresses::address_t& draw_skybox_array = ADDRESS_IMPL(
 		::protection::addresses::hash("scenesystem.dll:4585C90F8E????????4C8BDC"),
 		::protection::addresses::address_type::pattern,

@@ -262,7 +262,26 @@ namespace features::misc {
 		void on_override_view( std::uintptr_t view_setup );
 		void update_fov_sensitivity( std::uintptr_t player_pawn ) const;
 
+		/// Puts the camera in the spectated player's eyes. Runs after every other view feature.
+		void on_override_view_spectate( std::uintptr_t view_setup );
+
+		/// True for models that must not draw while spectating: the watched player, anything attached to
+		/// them, and our own first-person arms and gun. Called from the scene system's threads.
+		[[nodiscard]] bool hides_entity( std::uintptr_t entity, std::uint32_t schema_hash ) const;
+
+		/// The controller picked in the spectate window, or 0. Kept across rounds so the view comes back
+		/// when that player respawns.
+		void set_spectate_target( std::uintptr_t controller ) { this->m_spec_controller.store( controller ); }
+		[[nodiscard]] std::uintptr_t spectate_target( ) const { return this->m_spec_controller.load( ); }
+
+		/// The pawn the camera is actually in this frame; 0 when the view is our own.
+		[[nodiscard]] std::uintptr_t spectating_pawn( ) const { return this->m_spec_pawn.load( ); }
+
+		void on_render( xdraw::draw_list& draw_list ) const;
+
 	private:
+		[[nodiscard]] std::uintptr_t resolve_spectate_pawn( ) const;
+
 		void do_thirdperson( std::uintptr_t view_setup, std::uintptr_t local_pawn ) const;
 		void do_fov_change( std::uintptr_t view_setup, std::uintptr_t local_pawn ) const;
 		void do_aspect_ratio_change( std::uintptr_t view_setup );
@@ -270,6 +289,12 @@ namespace features::misc {
 		mutable float m_cached_fov_sensitivity{ -1.0f };
 		mutable bool m_cached_scoped{};
 		mutable float m_cached_target_fov{};
+
+		std::atomic<std::uintptr_t> m_spec_controller{};
+		std::atomic<std::uintptr_t> m_spec_pawn{};
+		std::uintptr_t m_spec_last_pawn{};
+		math::vector3 m_spec_angles{};
+		std::chrono::steady_clock::time_point m_spec_last_frame{};
 	};
 
 	class hud
@@ -469,6 +494,58 @@ namespace features::misc {
 
 		// The persistent HUD panel hosts scripts; the scoreboard itself is rebuilt
 		// whenever it is opened and is resolved from JavaScript at update time.
+		c_ui_engine* m_ui_engine {};
+		c_ui_panel* m_script_panel {};
+	};
+
+	/// Finds the other aimwhere users in the match and badges them, without a server of our own.
+	///
+	/// Every copy says hello to each human in the server over Steam's peer-to-peer messages
+	/// (steam::networking) on a channel only aimwhere listens on. Another copy answers; a stock client
+	/// never accepts the session, so the hello goes nowhere. Anyone heard from recently counts as a
+	/// user: they get the mark beside their ESP name and a badge in their scoreboard row.
+	class aimwhere_users {
+	public:
+		/// Game thread: networking, and the scoreboard badges while TAB is held.
+		void on_frame_stage_notify ();
+		void on_level_change ();
+
+		/// Closes the channel with everyone we know, so nothing keeps queueing for an unloaded DLL.
+		void shutdown ();
+
+		/// Any thread. The local player counts once networking is up.
+		[[nodiscard]] bool is_user (std::uint64_t steam_id) const;
+
+	private:
+		using clock = std::chrono::steady_clock;
+
+		struct peer {
+			clock::time_point last_hello {};
+			int hellos {};
+		};
+
+		void pump_messages (clock::time_point now);
+		void greet_players (clock::time_point now);
+		void update_scoreboard ();
+		[[nodiscard]] bool say (std::uint64_t steam_id, std::uint8_t kind) const;
+
+		[[nodiscard]] c_ui_panel* find_hud_panel () const;
+		[[nodiscard]] bool run_script (const std::string& script);
+
+		mutable std::mutex m_mutex {};
+		std::unordered_map<std::uint64_t, clock::time_point> m_users {};
+		std::unordered_map<std::uint64_t, peer> m_peers {};
+		// Both read by is_user from the render thread; m_local_id is stored before m_networking_ready is set.
+		std::atomic<std::uint64_t> m_local_id {};
+		std::atomic_bool m_networking_ready {};
+		bool m_networking_failed {};
+		clock::time_point m_next_pump {};
+		clock::time_point m_next_greet {};
+
+		bool m_script_injected {};
+		bool m_scoreboard_open {};
+		int m_scoreboard_frames {};
+		std::string m_sent_badges {};
 		c_ui_engine* m_ui_engine {};
 		c_ui_panel* m_script_panel {};
 	};

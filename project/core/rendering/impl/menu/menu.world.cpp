@@ -43,6 +43,32 @@ namespace rendering {
 
 			page.left( );
 
+			// Grenade visuals first, under plain names. The fire zone used to hide behind the projectile combo as
+			// "inferno", and smoke colour sat on the scene page.
+			if ( xui::begin_child( "grenades##esp_grenades", col_w ) )
+			{
+				xui::checkbox( "molotov fire zone", proj.m_overlay.group_toggle( 5 ) );
+				if ( xui::begin_popup( "##molotov_zone_cfg", 220.0f ) )
+				{
+					xui::color_picker( "fill color##molzone", proj.m_overlay.m_infernos.fill_color );
+					xui::color_picker( "outline color##molzone", proj.m_overlay.m_infernos.outline_color );
+					xui::slider_float( "outline thickness##molzone", proj.m_overlay.m_infernos.outline_thickness, 0.5f, 5.0f, "%.1f" );
+					xui::checkbox( "glow##molzone", proj.m_overlay.m_infernos.glow );
+					xui::slider_float( "glow strength##molzone", proj.m_overlay.m_infernos.glow_strength, 0.1f, 1.0f, "%.2f" );
+					xui::end_popup( );
+				}
+
+				xui::checkbox( "smoke color", w.m_scene.smoke_color );
+				if ( xui::begin_popup( "##smokecolor_popup", 220.0f ) )
+				{
+					// Alpha is the cloud's opacity.
+					xui::color_picker( "color##smoke", w.m_scene.smoke_color_value );
+					xui::end_popup( );
+				}
+
+				xui::end_child( );
+			}
+
 			if ( xui::begin_child( "items##esp_items", col_w ) )
 			{
 				static int item_group{};
@@ -100,14 +126,18 @@ namespace rendering {
 
 			if ( xui::begin_child( "projectiles##esp_projectiles", col_w ) )
 			{
+				// Display names only; k_group_names doubles as the config keys and can't change.
+				constexpr const char* proj_group_names[ ]{ "he grenade", "flashbang", "smoke", "molotov", "decoy", "molotov fire" };
+				static_assert( std::size( proj_group_names ) == settings::esp::projectile::k_group_count );
+
 				static auto proj_group{ 0 };
-				xui::combo( "group##proj_sel", proj_group, settings::esp::projectile::k_group_names, settings::esp::projectile::k_group_count );
+				xui::combo( "group##proj_sel", proj_group, proj_group_names, settings::esp::projectile::k_group_count );
 
 				xui::layout::separator( );
 
 				const auto is_inferno = ( proj_group == 5 );
 
-				xui::checkbox( is_inferno ? "inferno esp" : "projectile esp", proj.m_overlay.group_toggle( proj_group ) );
+				xui::checkbox( is_inferno ? "fire zone" : "projectile esp", proj.m_overlay.group_toggle( proj_group ) );
 
 				if ( !is_inferno )
 				{

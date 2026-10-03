@@ -110,17 +110,21 @@ namespace rendering {
 
 	namespace svgs {
 
-		constexpr auto logo = R"(<svg width="17" height="14" viewBox="0 0 17 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0.148138 10.5306L7.19953 0.643266C7.81122 -0.214422 9.08773 -0.214422 9.69942 0.643266L16.7254 10.4949C17.099 11.0189 16.7236 11.7453 16.0792 11.7453H14.5344C14.1378 11.7453 13.7815 11.5036 13.6355 11.1356L11.5458 5.86857C11.4326 5.58318 11.1562 5.3957 10.8486 5.3957C10.7131 5.3957 10.6149 5.52457 10.651 5.65485L12.6899 12.9972C12.8299 13.5014 12.4499 14 11.9256 14H10.5367C10.2323 14 9.97322 13.7786 9.92648 13.4784L8.68012 4.66254C8.64757 4.45362 8.28767 4.45728 8.24676 4.66475L6.57384 13.5028C6.51683 13.7917 6.26301 14 5.96795 14H4.58215C4.04293 14 3.66094 13.4746 3.8282 12.9631L6.17936 5.7721C6.23588 5.59921 6.10678 5.4216 5.92452 5.4216H5.87377C5.57672 5.4216 5.30764 5.59658 5.1877 5.86781L2.81532 11.2326C2.65733 11.5899 2.29903 11.8169 1.9078 11.8076L0.775512 11.7808C0.139818 11.7656 -0.220464 11.0476 0.148214 10.5306H0.148138Z" fill="#111111"/> </svg>)";
+		constexpr auto logo = brand::mark;
+		constexpr auto logo_ring = R"(<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M27.59 19.11A12 12 0 0 1 19.11 27.59M12.89 27.59A12 12 0 0 1 4.41 19.11M4.41 12.89A12 12 0 0 1 12.89 4.41M19.11 4.41A12 12 0 0 1 27.59 12.89M16 1.6V6.6M16 25.4V30.4M1.6 16H6.6M25.4 16H30.4" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>)";
+		constexpr auto logo_glyph = R"(<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M12.9 13.1C12.9 11.3 14.3 10.1 16 10.1C17.7 10.1 19.1 11.2 19.1 12.9C19.1 14.4 18.1 15.1 17.1 15.7C16.4 16.2 16 16.8 16 17.9" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="16" cy="21.4" r="1.45" fill="white"/></svg>)";
+		constexpr auto word_aim = R"(<svg width="111" height="23" viewBox="0 0 111 23" xmlns="http://www.w3.org/2000/svg"><path d="M11.2 10V20M11.2 15A5 5 0 1 1 1.2 15A5 5 0 1 1 11.2 15M16.2 10V20M21.2 20V13.5A3.5 3.5 0 0 1 28.2 13.5V20M28.2 13.5A3.5 3.5 0 0 1 35.2 13.5V20M21.2 10V20" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="16.2" cy="5.4" r="1.6" fill="white"/></svg>)";
+		constexpr auto word_where = R"(<svg width="111" height="23" viewBox="0 0 111 23" xmlns="http://www.w3.org/2000/svg"><path d="M40.2 10L43.7 20L47.2 12L50.7 20L54.2 10M59.2 4V20M59.2 15A5 5 0 0 1 69.2 15V20M74.2 15H84.2A5 5 0 1 0 82.74 18.54M89.2 10V20M89.2 15C89.2 12 91.2 10 95.2 10M99.2 15H109.2A5 5 0 1 0 107.74 18.54" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>)";
 		constexpr auto search = R"(<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 6.66667C2 7.2795 2.12071 7.88634 2.35523 8.45252C2.58975 9.01871 2.93349 9.53316 3.36683 9.9665C3.80017 10.3998 4.31462 10.7436 4.88081 10.9781C5.447 11.2126 6.05383 11.3333 6.66667 11.3333C7.2795 11.3333 7.88634 11.2126 8.45252 10.9781C9.01871 10.7436 9.53316 10.3998 9.9665 9.9665C10.3998 9.53316 10.7436 9.01871 10.9781 8.45252C11.2126 7.88634 11.3333 7.2795 11.3333 6.66667C11.3333 6.05383 11.2126 5.447 10.9781 4.88081C10.7436 4.31462 10.3998 3.80017 9.9665 3.36683C9.53316 2.93349 9.01871 2.58975 8.45252 2.35523C7.88634 2.12071 7.2795 2 6.66667 2C6.05383 2 5.447 2.12071 4.88081 2.35523C4.31462 2.58975 3.80017 2.93349 3.36683 3.36683C2.93349 3.80017 2.58975 4.31462 2.35523 4.88081C2.12071 5.447 2 6.05383 2 6.66667Z" stroke="white" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 14L10 10" stroke="white" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>)";
 		constexpr auto settings = R"(<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11.5937 3.65661C11.7942 3.77063 11.9607 3.93601 12.0761 4.13573C12.1914 4.33546 12.2514 4.56231 12.25 4.79294V9.04194C12.25 9.51386 11.9916 9.94903 11.5745 10.1783L7.637 12.6691C7.44179 12.7763 7.2227 12.8325 7 12.8325C6.7773 12.8325 6.55821 12.7763 6.363 12.6691L2.4255 10.1783C2.22143 10.0668 2.05107 9.90245 1.93224 9.70255C1.81341 9.50265 1.75047 9.2745 1.75 9.04194V4.79236C1.75 4.32044 2.00842 3.88586 2.4255 3.65661L6.363 1.33494C6.56398 1.22413 6.78975 1.16602 7.01925 1.16602C7.24875 1.16602 7.47452 1.22413 7.6755 1.33494L11.613 3.65661H11.5937Z" stroke="#111111" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.25 7C5.25 7.46413 5.43437 7.90925 5.76256 8.23744C6.09075 8.56563 6.53587 8.75 7 8.75C7.46413 8.75 7.90925 8.56563 8.23744 8.23744C8.56563 7.90925 8.75 7.46413 8.75 7C8.75 6.53587 8.56563 6.09075 8.23744 5.76256C7.90925 5.43437 7.46413 5.25 7 5.25C6.53587 5.25 6.09075 5.43437 5.76256 5.76256C5.43437 6.09075 5.25 6.53587 5.25 7Z" stroke="#111111" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>)";
-		constexpr auto tab_rage = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.75 12C3.75 13.0834 3.96339 14.1562 4.37799 15.1571C4.7926 16.1581 5.40029 17.0675 6.16637 17.8336C6.93245 18.5997 7.84193 19.2074 8.84286 19.622C9.8438 20.0366 10.9166 20.25 12 20.25M20.25 12C20.25 10.9166 20.0366 9.8438 19.622 8.84286C19.2074 7.84193 18.5997 6.93245 17.8336 6.16637C17.0675 5.40029 16.1581 4.7926 15.1571 4.37799C14.1562 3.96339 13.0834 3.75 12 3.75C10.9166 3.75 9.8438 3.96339 8.84286 4.37799C7.84193 4.7926 6.93245 5.40029 6.16637 6.16637C5.40029 6.93245 4.7926 7.84193 4.37799 8.84286C3.96339 9.8438 3.75 10.9166 3.75 12M3.75 12H7.41667M12 20.25C13.0834 20.25 14.1562 20.0366 15.1571 19.622C16.1581 19.2074 17.0675 18.5997 17.8336 17.8336C18.5997 17.0675 19.2074 16.1581 19.622 15.1571C20.0366 14.1562 20.25 13.0834 20.25 12M12 20.25V17.5M20.25 12H17.5M12 3.75V7.41667M12 12V12.01" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>)";
-		constexpr auto tab_legit = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 6.25C8.82436 6.25 6.25 8.82436 6.25 12C6.25 15.1756 8.82436 17.75 12 17.75C15.1756 17.75 17.75 15.1756 17.75 12C17.75 8.82436 15.1756 6.25 12 6.25Z" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 4.25V6.25M12 17.75V19.75M4.25 12H6.25M17.75 12H19.75M12 12H12.01" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>)";
-		constexpr auto tab_player = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.34933 15.375C7.00449 14.7241 4.98599 12.9889 3.29199 10.1665C5.49199 6.49979 8.24199 4.66646 11.542 4.66646C14.842 4.66646 17.592 6.49979 19.792 10.1665M9.70866 10.1665C9.70866 10.6527 9.90181 11.119 10.2456 11.4628C10.5894 11.8066 11.0558 11.9998 11.542 11.9998C12.0282 11.9998 12.4945 11.8066 12.8384 11.4628C13.1822 11.119 13.3753 10.6527 13.3753 10.1665C13.3753 9.68023 13.1822 9.21391 12.8384 8.8701C12.4945 8.52628 12.0282 8.33313 11.542 8.33313C11.0558 8.33313 10.5894 8.52628 10.2456 8.8701C9.90181 9.21391 9.70866 9.68023 9.70866 10.1665ZM16.8587 18.2487L14.8677 19.2919C14.8086 19.3226 14.7421 19.3364 14.6757 19.3315C14.6092 19.3267 14.5455 19.3035 14.4915 19.2645C14.4374 19.2255 14.3953 19.1723 14.3698 19.1107C14.3443 19.0492 14.3364 18.9818 14.347 18.916L14.7274 16.706L13.1168 15.1412C13.0688 15.0947 13.0347 15.0357 13.0186 14.9708C13.0025 14.9059 13.0049 14.8378 13.0257 14.7742C13.0464 14.7107 13.0846 14.6542 13.1359 14.6113C13.1872 14.5684 13.2495 14.5408 13.3157 14.5316L15.5414 14.209L16.5369 12.1987C16.5667 12.1388 16.6126 12.0885 16.6694 12.0532C16.7263 12.018 16.7918 11.9994 16.8587 11.9994C16.9255 11.9994 16.9911 12.018 17.0479 12.0532C17.1047 12.0885 17.1506 12.1388 17.1804 12.1987L18.1759 14.209L20.4016 14.5316C20.4676 14.5411 20.5297 14.5689 20.5807 14.6118C20.6318 14.6548 20.6698 14.7112 20.6905 14.7746C20.7112 14.838 20.7138 14.906 20.6979 14.9707C20.6819 15.0355 20.6482 15.0946 20.6005 15.1412L18.9899 16.706L19.3694 18.9151C19.3808 18.981 19.3735 19.0488 19.3483 19.1107C19.3231 19.1726 19.2811 19.2262 19.227 19.2655C19.1728 19.3047 19.1088 19.328 19.0421 19.3327C18.9754 19.3373 18.9087 19.3232 18.8497 19.2919L16.8587 18.2487Z" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>)";
-		constexpr auto tab_world = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 20.25C16.5563 20.25 20.25 16.5563 20.25 12C20.25 7.44365 16.5563 3.75 12 3.75C7.44365 3.75 3.75 7.44365 3.75 12C3.75 16.5563 7.44365 20.25 12 20.25Z" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.25 12H19.75M12 3.75C14.1 6.1 15.15 8.85 15.15 12C15.15 15.15 14.1 17.9 12 20.25M12 3.75C9.9 6.1 8.85 8.85 8.85 12C8.85 15.15 9.9 17.9 12 20.25" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>)";
-		constexpr auto tab_skins = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.34933 15.375C7.00449 14.7241 4.98599 12.9889 3.29199 10.1665C5.49199 6.49979 8.24199 4.66646 11.542 4.66646C14.842 4.66646 17.592 6.49979 19.792 10.1665M9.70866 10.1665C9.70866 10.6527 9.90181 11.119 10.2456 11.4628C10.5894 11.8066 11.0558 11.9998 11.542 11.9998C12.0282 11.9998 12.4945 11.8066 12.8384 11.4628C13.1822 11.119 13.3753 10.6527 13.3753 10.1665C13.3753 9.68023 13.1822 9.21391 12.8384 8.8701C12.4945 8.52628 12.0282 8.33313 11.542 8.33313C11.0558 8.33313 10.5894 8.52628 10.2456 8.8701C9.90181 9.21391 9.70866 9.68023 9.70866 10.1665ZM16.8587 18.2487L14.8677 19.2919C14.8086 19.3226 14.7421 19.3364 14.6757 19.3315C14.6092 19.3267 14.5455 19.3035 14.4915 19.2645C14.4374 19.2255 14.3953 19.1723 14.3698 19.1107C14.3443 19.0492 14.3364 18.9818 14.347 18.916L14.7274 16.706L13.1168 15.1412C13.0688 15.0947 13.0347 15.0357 13.0186 14.9708C13.0025 14.9059 13.0049 14.8378 13.0257 14.7742C13.0464 14.7107 13.0846 14.6542 13.1359 14.6113C13.1872 14.5684 13.2495 14.5408 13.3157 14.5316L15.5414 14.209L16.5369 12.1987C16.5667 12.1388 16.6126 12.0885 16.6694 12.0532C16.7263 12.018 16.7918 11.9994 16.8587 11.9994C16.9255 11.9994 16.9911 12.018 17.0479 12.0532C17.1047 12.0885 17.1506 12.1388 17.1804 12.1987L18.1759 14.209L20.4016 14.5316C20.4676 14.5411 20.5297 14.5689 20.5807 14.6118C20.6318 14.6548 20.6698 14.7112 20.6905 14.7746C20.7112 14.838 20.7138 14.906 20.6979 14.9707C20.6819 15.0355 20.6482 15.0946 20.6005 15.1412L18.9899 16.706L19.3694 18.9151C19.3808 18.981 19.3735 19.0488 19.3483 19.1107C19.3231 19.1726 19.2811 19.2262 19.227 19.2655C19.1728 19.3047 19.1088 19.328 19.0421 19.3327C18.9754 19.3373 18.9087 19.3232 18.8497 19.2919L16.8587 18.2487Z" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>)";
-		constexpr auto tab_misc = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 7H10M14 7H19M5 12H7M11 12H19M5 17H13M17 17H19M10 5.25V8.75M11 10.25V13.75M17 15.25V18.75" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>)";
-		constexpr auto tab_config = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.25 7.25C4.25 6.42157 4.92157 5.75 5.75 5.75H9L11 7.75H18.25C19.0784 7.75 19.75 8.42157 19.75 9.25V17.25C19.75 18.0784 19.0784 18.75 18.25 18.75H5.75C4.92157 18.75 4.25 18.0784 4.25 17.25V7.25Z" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 12.25H16M8 15.25H13" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>)";
-		constexpr auto tab_theme = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="7.5" stroke="white" stroke-width="1.6"/><circle cx="9.1" cy="10.1" r="1.15" fill="white"/><circle cx="14.9" cy="10.1" r="1.15" fill="white"/><circle cx="12" cy="14.9" r="1.15" fill="white"/></svg>)";
+		constexpr auto tab_rage = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.5 18.25V16.5C6.9 15.6 6 13.9 6 11.75C6 8.3 8.7 5.5 12 5.5C15.3 5.5 18 8.3 18 11.75C18 13.9 17.1 15.6 15.5 16.5V18.25C15.5 18.8 15.05 19.25 14.5 19.25H9.5C8.95 19.25 8.5 18.8 8.5 18.25Z M11 16.75V19.25M13 16.75V19.25" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="9.65" cy="11.75" r="1.45" fill="white"/><circle cx="14.35" cy="11.75" r="1.45" fill="white"/></svg>)";
+		constexpr auto tab_legit = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="6.25" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M12 3.5V8.25M12 15.75V20.5M3.5 12H8.25M15.75 12H20.5" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="12" cy="12" r="1.1" fill="white"/></svg>)";
+		constexpr auto tab_player = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.75 8.5V4.75H8.5M15.5 4.75H19.25V8.5M19.25 15.5V19.25H15.5M8.5 19.25H4.75V15.5" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="12" cy="9.9" r="2.3" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M8.25 16.9C8.25 14.95 9.95 13.6 12 13.6C14.05 13.6 15.75 14.95 15.75 16.9" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>)";
+		constexpr auto tab_world = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.75 18.75L9.25 10.75L13 15.75L15.25 12.9L20.25 18.75Z" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="16.4" cy="7.1" r="1.9" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>)";
+		constexpr auto tab_skins = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.6 13.4L17.9 6.1C18.85 5.15 19.95 5.25 19.6 6.6C19 8.95 17.15 11.75 13.95 14.5L13.1 15.25Z" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M8.75 11.75L12.75 15.75" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M9.65 14.35L5.25 18.75" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/></svg>)";
+		constexpr auto tab_misc = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 4.75V8.1M7 11.9V19.25M12 4.75V13.1M12 16.9V19.25M17 4.75V6.1M17 9.9V19.25" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="7" cy="10" r="1.9" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="12" cy="15" r="1.9" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="17" cy="8" r="1.9" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>)";
+		constexpr auto tab_config = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.75 4.75H15.5L19.25 8.5V18.25C19.25 18.8 18.8 19.25 18.25 19.25H5.75C5.2 19.25 4.75 18.8 4.75 18.25V5.75C4.75 5.2 5.2 4.75 5.75 4.75Z M8.25 4.75V8.5H14.25V4.75 M7.75 19.25V14.25C7.75 13.7 8.2 13.25 8.75 13.25H15.25C15.8 13.25 16.25 13.7 16.25 14.25V19.25" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>)";
+		constexpr auto tab_theme = R"(<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 4.75C7.99 4.75 4.75 7.99 4.75 12C4.75 16.01 7.99 19.25 12 19.25C12.97 19.25 13.5 18.6 13.5 17.85C13.5 17.4 13.3 17.05 13.05 16.75C12.8 16.45 12.65 16.1 12.65 15.65C12.65 14.85 13.3 14.25 14.1 14.25H15.75C17.7 14.25 19.25 12.7 19.25 10.75C19.25 7.4 16 4.75 12 4.75Z" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="8.4" cy="11.6" r="1.1" fill="white"/><circle cx="10.6" cy="8.3" r="1.1" fill="white"/><circle cx="14.6" cy="8.3" r="1.1" fill="white"/></svg>)";
 
 		constexpr auto cfg_folder_black = R"(<svg width="15" height="13" viewBox="0 0 15 13" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.25 0.75H5.25L7.5 3H12.75C13.1478 3 13.5294 3.15804 13.8107 3.43934C14.092 3.72064 14.25 4.10218 14.25 4.5V10.5C14.25 10.8978 14.092 11.2794 13.8107 11.5607C13.5294 11.842 13.1478 12 12.75 12H2.25C1.85218 12 1.47064 11.842 1.18934 11.5607C0.908035 11.2794 0.75 10.8978 0.75 10.5V2.25C0.75 1.85218 0.908035 1.47064 1.18934 1.18934C1.47064 0.908035 1.85218 0.75 2.25 0.75Z" stroke="#111111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>)";
 		constexpr auto cfg_folder_dim = R"(<svg width="15" height="13" viewBox="0 0 15 13" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.25 0.75H5.25L7.5 3H12.75C13.1478 3 13.5294 3.15804 13.8107 3.43934C14.092 3.72064 14.25 4.10218 14.25 4.5V10.5C14.25 10.8978 14.092 11.2794 13.8107 11.5607C13.5294 11.842 13.1478 12 12.75 12H2.25C1.85218 12 1.47064 11.842 1.18934 11.5607C0.908035 11.2794 0.75 10.8978 0.75 10.5V2.25C0.75 1.85218 0.908035 1.47064 1.18934 1.18934C1.47064 0.908035 1.85218 0.75 2.25 0.75Z" stroke="#ADC0FF" stroke-opacity="0.32" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>)";
@@ -128,7 +132,6 @@ namespace rendering {
 		constexpr auto cfg_cloud_dim = R"(<svg width="17" height="12" viewBox="0 0 17 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.24275 10.4998C2.31375 10.4998 0.75 8.99454 0.75 7.13754C0.75 5.28129 2.31375 3.77604 4.24275 3.77604C4.5375 2.45454 5.58825 1.37604 6.999 0.946291C8.409 0.517291 9.966 0.801541 11.082 1.69629C12.198 2.58879 12.7035 3.95154 12.4095 5.27304H13.152C14.5867 5.27304 15.75 6.44304 15.75 7.88754C15.75 9.33279 14.5867 10.5028 13.1512 10.5028H4.24275" stroke="#ADC0FF" stroke-opacity="0.32" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>)";
 		constexpr auto cfg_plus = R"(<svg width="16" height="15" viewBox="0 0 16 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 4V11M4 7.5H12" stroke="#ADC0FF" stroke-width="1.5" stroke-linecap="round"/></svg>)";
 
-		constexpr auto intro_splash_logo = R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4421.68 3676.26" width="4421.68" height="3676.26"><path fill="#FFFFFF" d="M38.84,2765.23L1886.62,168.91c160.29-225.22,494.79-225.22,655.08,0l1841.11,2586.94c97.92,137.59-.45,328.33-169.32,328.33h-404.81c-103.92,0-197.3-63.46-235.56-160.09l-547.58-1383.07c-29.67-74.94-102.1-124.17-182.71-124.17h0c-35.51,0-61.24,33.84-51.76,68.05l534.27,1928.03c36.69,132.4-62.89,263.32-200.28,263.32h-363.96c-79.77,0-147.65-58.14-159.9-136.97l-326.6-2314.95c-8.53-54.86-102.84-53.9-113.56.58l-438.38,2320.78c-14.94,75.86-81.45,130.56-158.77,130.56h-363.14c-141.3,0-241.4-137.96-197.57-272.29l616.11-1888.27c14.81-45.4-19.02-92.04-66.78-92.04h-13.3c-77.84,0-148.35,45.95-179.78,117.17l-621.67,1408.75c-41.4,93.82-135.29,153.43-237.81,150.99l-296.71-7.06c-166.58-3.97-260.99-192.52-164.38-328.27Z"/></svg>)";
 
 	} // namespace svgs
 
@@ -934,16 +937,25 @@ namespace rendering {
 		}
 
 		constexpr auto icon_target{ 16.0f };
-		this->m_textures.logo.resource = xdraw::load_svg( svgs::logo, icon_target / 14.0f, &this->m_textures.logo.width, &this->m_textures.logo.height );
 
-		constexpr float k_intro_logo_view_w{ 4421.68f };
-		constexpr float k_intro_logo_px_w{ 240.0f };
-		this->m_textures.intro_splash.resource = xdraw::load_svg(
-			svgs::intro_splash_logo,
-			k_intro_logo_px_w / k_intro_logo_view_w,
-			&this->m_textures.intro_splash.width,
-			&this->m_textures.intro_splash.height
-		);
+		// The mark is drawn on a 32-unit canvas and the wordmark on a 111 x 23 one; every size below is a
+		// pixel target over those. The glass pill gets the heavier one-colour mark, which survives 20px.
+		const auto load = [ ]( textures::entry& e, const char* svg, float scale )
+			{
+				e.resource = xdraw::load_svg( svg, scale, &e.width, &e.height );
+			};
+
+		load( this->m_textures.logo, svgs::logo, 20.0f / 32.0f );
+		load( this->m_textures.logo_ring, svgs::logo_ring, 30.0f / 32.0f );
+		load( this->m_textures.logo_glyph, svgs::logo_glyph, 30.0f / 32.0f );
+
+		constexpr auto k_intro_mark_px{ 112.0f };
+		constexpr auto k_intro_word_px{ 260.0f };
+		load( this->m_textures.intro_ring, svgs::logo_ring, k_intro_mark_px / 32.0f );
+		load( this->m_textures.intro_glyph, svgs::logo_glyph, k_intro_mark_px / 32.0f );
+		load( this->m_textures.intro_aim, svgs::word_aim, k_intro_word_px / 111.0f );
+		load( this->m_textures.intro_where, svgs::word_where, k_intro_word_px / 111.0f );
+
 		this->m_textures.search.resource = xdraw::load_svg( svgs::search, icon_target / 16.0f, &this->m_textures.search.width, &this->m_textures.search.height );
 		this->m_textures.settings.resource = xdraw::load_svg( svgs::settings, icon_target / 14.0f, &this->m_textures.settings.width, &this->m_textures.settings.height );
 
@@ -1149,42 +1161,41 @@ namespace rendering {
 		float anchor_w{};
 		float anchor_bottom{};
 
-		if ( this->m_textures.intro_splash.resource )
+		// The lockup: the mark stacked over the wordmark, ring and "where" in the accent, the question mark and
+		// "aim" in white. Each part is its own texture so the accent can tint them; they all scale together.
+		const auto& t = this->m_textures;
+		if ( t.intro_ring.resource && t.intro_glyph.resource && t.intro_aim.resource && t.intro_where.resource )
 		{
-			auto tex_w = static_cast< float >( this->m_textures.intro_splash.width );
-			auto tex_h = static_cast< float >( this->m_textures.intro_splash.height );
-			if ( tex_w > 0.0f && tex_h > 0.0f )
+			const auto mark_w = static_cast< float >( t.intro_ring.width );
+			const auto mark_h = static_cast< float >( t.intro_ring.height );
+			const auto word_w = static_cast< float >( t.intro_aim.width );
+			const auto word_h = static_cast< float >( t.intro_aim.height );
+			constexpr auto k_lockup_gap{ 22.0f };
+
+			const auto lockup_w = std::max( mark_w, word_w );
+			const auto lockup_h = mark_h + k_lockup_gap + word_h;
+
+			if ( lockup_w > 0.0f && lockup_h > 0.0f )
 			{
-				const auto target_max = sw * 0.28f;
-				auto draw_w = tex_w;
-				auto draw_h = tex_h;
-
-				if ( draw_w > target_max )
-				{
-					const auto s = target_max / draw_w;
-					draw_w *= s;
-					draw_h *= s;
-				}
-
-				if ( draw_h > sh * 0.42f )
-				{
-					const auto s = ( sh * 0.42f ) / draw_h;
-					draw_w *= s;
-					draw_h *= s;
-				}
-
-				const auto eased_scale = std::lerp( 0.92f, 1.0f, reveal );
-				const float dw = draw_w * eased_scale;
-				const float dh = draw_h * eased_scale;
-				const auto lx = std::floor( ( sw - dw ) * 0.5f );
-				const auto ly = std::floor( ( sh - dh ) * 0.5f );
+				const auto fit = std::min( { 1.0f, ( sw * 0.28f ) / lockup_w, ( sh * 0.42f ) / lockup_h } );
+				const auto s = fit * std::lerp( 0.92f, 1.0f, reveal );
 				const auto img_a = static_cast< std::uint8_t >( 255.0f * reveal );
+				const auto white = xdraw::color{ 255, 255, 255, img_a };
+				const auto accent = tokens::col_accent.alpha( img_a );
 
-				dl.image( lx, ly, dw, dh, this->m_textures.intro_splash.resource.Get( ), xdraw::color{ 255, 255, 255, img_a } );
+				const auto top = std::floor( ( sh - lockup_h * s ) * 0.5f );
+				const auto mx = std::floor( ( sw - mark_w * s ) * 0.5f );
+				const auto wx = std::floor( ( sw - word_w * s ) * 0.5f );
+				const auto wy = std::floor( top + ( mark_h + k_lockup_gap ) * s );
 
-				anchor_x = lx;
-				anchor_w = dw;
-				anchor_bottom = ly + dh;
+				dl.image( mx, top, mark_w * s, mark_h * s, t.intro_ring.resource.Get( ), accent );
+				dl.image( mx, top, mark_w * s, mark_h * s, t.intro_glyph.resource.Get( ), white );
+				dl.image( wx, wy, word_w * s, word_h * s, t.intro_aim.resource.Get( ), white );
+				dl.image( wx, wy, word_w * s, word_h * s, t.intro_where.resource.Get( ), accent );
+
+				anchor_x = wx;
+				anchor_w = word_w * s;
+				anchor_bottom = wy + word_h * s;
 			}
 		}
 
@@ -1488,6 +1499,8 @@ namespace rendering {
 
 			xui::end_window( );
 
+			this->draw_spectate_window( menu_reveal );
+
 		}
 		xui::end( );
 	}
@@ -1545,7 +1558,7 @@ namespace rendering {
 			const auto lx = std::floor( pill_x + ( pill_w - lw ) * 0.5f );
 			const auto ly = std::floor( pill_y + ( pill_h - lh ) * 0.5f );
 
-			dl.image( lx, ly, lw, lh, this->m_textures.logo.resource.Get( ) );
+			dl.image( lx, ly, lw, lh, this->m_textures.logo.resource.Get( ), tokens::col_dark );
 		}
 
 		// Eight now, not seven. The theme preset dots that used to sit at the bottom of this strip moved
@@ -1640,11 +1653,26 @@ namespace rendering {
 		const auto col_y = std::floor( this->m_y + 8.0f );
 		const auto col_w = std::floor( this->m_x + tokens::gap + tokens::sidebar_w + 3.0f - col_x );
 
-		// Tabs share the column above the avatar; each cell is one tab. The active cell is painted in the content
-		// colour and runs over the column's right-hand rule, so it reads as a tab joined to the page it opens.
+		// The mark heads the column: ring and ticks in the accent, the question mark in the active-tab grey.
+		const auto& mark = this->m_textures.logo_ring;
+		const auto logo_room = static_cast< float >( mark.height ) + 18.0f;
+		if ( mark.resource && this->m_textures.logo_glyph.resource )
+		{
+			const auto lw = static_cast< float >( mark.width );
+			const auto lh = static_cast< float >( mark.height );
+			const auto lx = std::floor( col_x + ( col_w - lw ) * 0.5f );
+			const auto ly = std::floor( col_y + 10.0f );
+			dl.image( lx, ly, lw, lh, mark.resource.Get( ), tokens::col_accent.alpha( 255 ) );
+			dl.image( lx, ly, lw, lh, this->m_textures.logo_glyph.resource.Get( ), xdraw::color{ 215, 215, 215, 255 } );
+		}
+
+		// Tabs share the column between the mark and the avatar; each cell is one tab. The active cell is painted
+		// in the content colour and runs over the column's right-hand rule, so it reads as a tab joined to the
+		// page it opens. The lower clamp gives way at the minimum window height so the last tab never runs under
+		// the avatar.
 		const auto avatar_room = avatar_size + 12.0f;
-		const auto cell_h = std::floor( std::clamp( ( h - avatar_room - 8.0f ) / static_cast< float >( tab_count ), 30.0f, 56.0f ) );
-		const auto cells_y = col_y + 8.0f;
+		const auto cell_h = std::floor( std::clamp( ( h - logo_room - avatar_room - 8.0f ) / static_cast< float >( tab_count ), 26.0f, 56.0f ) );
+		const auto cells_y = col_y + logo_room;
 
 		for ( auto i = 0; i < tab_count; ++i )
 		{
@@ -1666,13 +1694,16 @@ namespace rendering {
 				dl.rect_filled( cell.x, cell.y + 1.0f, cell.w + 2.0f, 1.0f, xdraw::color{ 44, 44, 44, 255 } );
 				dl.rect_filled( cell.x, cell.y + cell.h - 2.0f, cell.w + 2.0f, 1.0f, xdraw::color{ 44, 44, 44, 255 } );
 				dl.rect_filled( cell.x, cell.y + cell.h - 1.0f, cell.w + 2.0f, 1.0f, xdraw::color{ 0, 0, 0, 255 } );
+
+				// Accent marker down the outer edge, inside the cell's black-and-grey rules.
+				dl.rect_filled( cell.x, cell.y + 2.0f, 2.0f, cell.h - 4.0f, tokens::col_accent.alpha( 255 ) );
 			}
 
 			const auto hover_anim = xui::anim::lerp( xui::fnv1a( "legacy_tab_hover" ) + i, hovered ? 1.0f : 0.0f, 14.0f );
 			auto icon_col = xui::lerp( xdraw::color{ 90, 90, 90, 255 }, xdraw::color{ 160, 160, 160, 255 }, hover_anim );
 			if ( is_active )
 			{
-				icon_col = xdraw::color{ 215, 215, 215, 255 };
+				icon_col = tokens::col_accent.alpha( 255 );
 			}
 
 			const auto& tex = this->m_textures.tabs[ i ];

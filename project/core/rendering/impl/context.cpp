@@ -119,6 +119,7 @@ namespace rendering {
 					features::combat::g_legit.on_render( dl );
 					features::misc::g_impacts.on_render( dl );
 					features::misc::g_hud.on_render( dl );
+					features::misc::g_camera.on_render( dl );
 					features::esp::other::g_overlay.on_render( dl );
 				} );
 			}

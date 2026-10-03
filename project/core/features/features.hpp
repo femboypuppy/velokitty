@@ -61,6 +61,7 @@ namespace features {
 		inline hud g_hud{};
 		inline other g_other{};
 		inline scoreboard_weapons g_scoreboard_weapons{};
+		inline aimwhere_users g_aimwhere_users{};
 
 	} // namespace misc
 

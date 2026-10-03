@@ -1,4 +1,5 @@
 #include <pch/pch.hpp>
+#include <utilities/memory/memory.hpp>
 #include <core/settings.hpp>
 #include <core/features/features.hpp>
 
@@ -160,6 +161,8 @@ namespace rendering {
 					xui::end_popup( );
 				}
 
+				xui::checkbox( "aimwhere badges", m.m_aimwhere_users.enabled );
+
 				xui::checkbox ("scoreboard weapons", m.m_scoreboard_weapons.enabled);
 				if (xui::begin_popup ("##scoreboardeq_popup", 220.0f)) {
 					xui::color_picker ("color##scoreboardeq", m.m_scoreboard_weapons.color);
@@ -313,7 +316,7 @@ namespace rendering {
 				xui::checkbox( "clantag", m.m_name_changer.clantag );
 				if ( xui::begin_popup( "##clantag_popup", 240.0f ) )
 				{
-					xui::text_input( "tag##ct", m.m_name_changer.clantag_text.value, 24, "velocity" );
+					xui::text_input( "tag##ct", m.m_name_changer.clantag_text.value, 24, "aimwhere" );
 					xui::combo( "style##ct", m.m_name_changer.clantag_mode.value, detail::clantag_styles, 3 );
 					xui::checkbox( "brackets##ct", m.m_name_changer.clantag_brackets );
 
@@ -403,6 +406,9 @@ namespace rendering {
 					xui::end_popup( );
 				}
 
+				// The player picker opens beside the menu while this is ticked.
+				xui::checkbox( "spectate", cam.spectate );
+
 				xui::end_child( );
 			}
 
@@ -489,6 +495,130 @@ namespace rendering {
 				xui::end_child( );
 			}
 		}
+	}
+
+	void menu::draw_spectate_window( float reveal )
+	{
+		if ( !settings::g_misc.m_camera.spectate.value )
+		{
+			return;
+		}
+
+		constexpr auto k_w{ 230.0f };
+		constexpr auto k_h{ 330.0f };
+
+		// First open: dock against the menu's right edge, or its left one if that would leave the screen. After
+		// that it stays wherever it was dragged.
+		if ( this->m_spec_x < 0.0f )
+		{
+			const auto [screen_w, screen_h] = xdraw::viewport_size( );
+			this->m_spec_x = this->m_x + this->m_w + 8.0f;
+			if ( this->m_spec_x + k_w > static_cast< float >( screen_w ) )
+			{
+				this->m_spec_x = std::max( 0.0f, this->m_x - k_w - 8.0f );
+			}
+
+			this->m_spec_y = this->m_y;
+		}
+
+		auto w = k_w;
+		auto h = k_h;
+		if ( !xui::begin_window( "##spectate", this->m_spec_x, this->m_spec_y, w, h, false, k_w, k_h, reveal ) )
+		{
+			return;
+		}
+
+		const auto& style = xui::ctx( ).style;
+		auto& cam = features::misc::g_camera;
+
+		if ( xui::begin_child( "spectate##spectate_list", k_w - style.window_pad_x * 2.0f, k_h - style.window_pad_y * 2.0f, true ) )
+		{
+			struct row
+			{
+				std::uintptr_t controller{};
+				std::string name{};
+				bool enemy{};
+				bool alive{};
+			};
+
+			std::vector<row> rows{};
+			const auto local = systems::g_local.get( );
+
+			for ( const auto& player : systems::g_entities.get_by_type( systems::entities::type::player ) )
+			{
+				if ( !player.ptr || player.ptr == local.controller )
+				{
+					continue;
+				}
+
+				// Unassigned and spectator slots have no pawn to look through.
+				const auto team = memory::read<int>( player.ptr + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
+				if ( team < 2 )
+				{
+					continue;
+				}
+
+				const auto name_ptr = memory::read<std::uintptr_t>( player.ptr + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) );
+
+				row r{};
+				r.controller = player.ptr;
+				r.name = name_ptr ? memory::read_string( name_ptr, 63 ) : std::string{ "?" };
+				r.enemy = local.is_this_other_team( team );
+				r.alive = memory::read<bool>( player.ptr + SCHEMA( "CCSPlayerController", "m_bPawnIsAlive"_hash ) );
+				rows.push_back( std::move( r ) );
+			}
+
+			const auto current = cam.spectate_target( );
+			const auto [avail_w, avail_h] = xui::layout::avail( );
+
+			if ( current && xui::button( "stop spectating##spec_stop", avail_w, 20.0f ) )
+			{
+				cam.set_spectate_target( 0 );
+			}
+
+			const auto draw_group = [ & ]( bool enemies )
+				{
+					xui::text( enemies ? "enemies" : "teammates", enemies ? xdraw::color{ 235, 110, 110, 255 } : xdraw::color{ 120, 170, 240, 255 } );
+
+					auto any{ false };
+					for ( const auto& r : rows )
+					{
+						if ( r.enemy != enemies )
+						{
+							continue;
+						}
+
+						any = true;
+
+						// Picking the one already watched goes back to your own view.
+						auto label = std::string( r.controller == current ? "> " : "" ) + std::string( xui::truncate( r.name, avail_w - 60.0f ) );
+						if ( !r.alive )
+						{
+							label += " (dead)";
+						}
+
+						label += "##spec_" + std::to_string( r.controller );
+
+						if ( xui::button( label, avail_w, 20.0f ) )
+						{
+							cam.set_spectate_target( r.controller == current ? 0 : r.controller );
+						}
+					}
+
+					if ( !any )
+					{
+						xui::text( "none", tokens::col_text_dim );
+					}
+				};
+
+			draw_group( true );
+			xui::layout::spacing( 4.0f );
+			draw_group( false );
+
+			xui::end_child( );
+		}
+
+		xui::end_window( );
 	}
 
 } // namespace rendering

@@ -265,6 +265,7 @@ namespace features::esp {
 				bool is_scoped{};
 				bool is_defusing{};
 				bool is_flashed{};
+				bool aimwhere_user{};
 				std::string name{};
 				std::array<systems::bones::data, 27> bones{};
 				math::vector3 origin{};
@@ -283,7 +284,8 @@ namespace features::esp {
 				[[nodiscard]] bool valid( ) const { return this->controller && this->pawn && this->health > 0; }
 			};
 
-			void add_box( xdraw::draw_list& draw_list, const systems::bounds::data& bounds, const settings::esp::player::overlay::box& cfg, bool visible );
+			/// highlight replaces the visible/occluded colour when set (visualise aimbot).
+			void add_box( xdraw::draw_list& draw_list, const systems::bounds::data& bounds, const settings::esp::player::overlay::box& cfg, bool visible, const xdraw::color* highlight = nullptr );
 			void add_skeleton( xdraw::draw_list& draw_list, const info& info, const settings::esp::player::overlay::skeleton& cfg, bool visible, const systems::local::snapshot& local );
 			void add_health_bar( xdraw::draw_list& draw_list, const systems::bounds::data& bounds, const info& info, const settings::esp::player::overlay::health_bar& cfg, draw_offsets& offsets );
 			void add_ammo_bar( xdraw::draw_list& draw_list, const systems::bounds::data& bounds, const info& info, const settings::esp::player::overlay::ammo_bar& cfg, draw_offsets& offsets );

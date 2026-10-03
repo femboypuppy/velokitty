@@ -41,6 +41,18 @@ namespace features::world {
         void on_light_scene_object_post( std::uintptr_t object ) const;
         void on_draw_scene_object_array( std::uintptr_t object_array ) const;
         void on_draw_scene_object( std::uintptr_t batch, int batch_count ) const;
+
+        enum class mesh_source : std::uint8_t
+        {
+            aggregate,
+            animatable,
+            instanced,
+            count
+        };
+
+        /// World colour for the scene-object classes on_draw_scene_object never saw. Meshes that belong to a
+        /// player, their gear or our viewmodel are left alone so chams and the models keep their colours.
+        void on_draw_world_meshes( std::uintptr_t batch, int batch_count, mesh_source source ) const;
         [[nodiscard]] bool on_setup_fog( __m128i* output, int* mode ) const;
         void on_set_shader_param( __m128i*& value, std::uint32_t hash ) const;
 
@@ -64,6 +76,9 @@ namespace features::world {
         std::uintptr_t m_active_original_material{};
         std::uintptr_t m_active_skybox_descriptor{};
         std::array<float, 3> m_active_original_sky_color{};
+
+        /// One log line per source the first time it tints something, so a log shows which paths are live.
+        mutable std::array<std::atomic<bool>, static_cast<std::size_t>( mesh_source::count )> m_source_logged{};
         bool m_active_sky_tinted{};
     };
 
@@ -76,7 +91,14 @@ namespace features::world {
         void on_map( std::uintptr_t token, std::size_t size, std::uintptr_t buf_ptr );
         void on_unmap( std::uintptr_t token );
 
+        /// Writes the configured colour onto every smoke grenade entity.
+        void on_frame_stage_notify( );
+
     private:
+        float m_scale{ 255.0f };
+        bool m_scale_known{};
+        bool m_dumped{};
+
         static inline bool m_active{};
         static inline std::uintptr_t m_buf{};
         static inline std::uintptr_t m_token{};

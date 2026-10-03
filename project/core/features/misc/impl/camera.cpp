@@ -38,6 +38,165 @@ namespace features::misc {
 		this->do_aspect_ratio_change( view_setup );
 	}
 
+	std::uintptr_t camera::resolve_spectate_pawn( ) const
+	{
+		if ( !settings::g_misc.m_camera.spectate.value || systems::g_local.is_in_cinematic( ) )
+		{
+			return 0;
+		}
+
+		const auto controller = this->m_spec_controller.load( );
+		if ( !controller || !systems::g_entities.exists( controller ) )
+		{
+			return 0;
+		}
+
+		const auto local = systems::g_local.get( );
+		if ( controller == local.controller )
+		{
+			return 0;
+		}
+
+		if ( !memory::safe_read<bool>( controller + SCHEMA( "CCSPlayerController", "m_bPawnIsAlive"_hash ) ).value_or( false ) )
+		{
+			return 0;
+		}
+
+		// Looked up through the controller every frame: the pawn is a new entity after each respawn.
+		const auto pawn = systems::g_entities.lookup( memory::safe_read<std::uint32_t>( controller + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) ).value_or( 0 ) );
+		if ( !pawn || pawn == local.pawn )
+		{
+			return 0;
+		}
+
+		if ( memory::safe_read<std::int32_t>( pawn + SCHEMA( "C_BaseEntity", "m_iHealth"_hash ) ).value_or( 0 ) <= 0 )
+		{
+			return 0;
+		}
+
+		return pawn;
+	}
+
+	void camera::on_override_view_spectate( std::uintptr_t view_setup )
+	{
+		const auto now = std::chrono::steady_clock::now( );
+		const auto dt = std::clamp( std::chrono::duration<float>( now - this->m_spec_last_frame ).count( ), 0.0f, 0.1f );
+		this->m_spec_last_frame = now;
+
+		const auto pawn = this->resolve_spectate_pawn( );
+		this->m_spec_pawn.store( pawn );
+
+		if ( !pawn )
+		{
+			this->m_spec_last_pawn = 0;
+			return;
+		}
+
+		const auto game_scene_node = memory::safe_read<std::uintptr_t>( pawn + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
+		if ( !game_scene_node )
+		{
+			return;
+		}
+
+		// The scene node origin is the interpolated, rendered one, so the position is smooth on its own.
+		const auto origin = memory::safe_read<math::vector3>( game_scene_node + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) );
+		const auto view_offset = memory::safe_read<math::vector3>( pawn + SCHEMA( "C_BaseModelEntity", "m_vecViewOffset"_hash ) );
+		const auto eye_angles = memory::safe_read<math::vector3>( pawn + SCHEMA( "C_CSPlayerPawn", "m_angEyeAngles"_hash ) );
+		if ( !origin.has_value( ) || !view_offset.has_value( ) || !eye_angles.has_value( ) )
+		{
+			return;
+		}
+
+		// A crouched or mid-duck offset is fine as it is; a zero one means it has not been networked yet, and
+		// standing eye height is a better guess than the floor.
+		auto offset = *view_offset;
+		if ( offset.z < 1.0f )
+		{
+			offset = { 0.0f, 0.0f, 64.0f };
+		}
+
+		auto target_angles = *eye_angles;
+		target_angles.z = 0.0f;
+		math::helpers::normalize_angles( target_angles );
+
+		if ( pawn != this->m_spec_last_pawn )
+		{
+			this->m_spec_angles = target_angles;
+		}
+		else
+		{
+			// Eye angles arrive once per network tick and are not interpolated, so used raw the view turns in
+			// 64 Hz steps. A 20 ms follow turns those steps into continuous motion for about a tick of delay.
+			auto delta = target_angles - this->m_spec_angles;
+			math::helpers::normalize_angles( delta );
+
+			const auto follow = 1.0f - std::exp( -dt / 0.02f );
+			this->m_spec_angles = this->m_spec_angles + delta * follow;
+			math::helpers::normalize_angles( this->m_spec_angles );
+		}
+
+		this->m_spec_last_pawn = pawn;
+
+		memory::write<math::vector3>( view_setup + 0x4a0, *origin + offset );
+		memory::write<math::vector3>( view_setup + 0x4b8, this->m_spec_angles );
+	}
+
+	bool camera::hides_entity( std::uintptr_t entity, std::uint32_t schema_hash ) const
+	{
+		const auto pawn = this->m_spec_pawn.load( );
+		if ( !pawn )
+		{
+			return false;
+		}
+
+		if ( entity == pawn || schema_hash == "C_CS2HudModelArms"_hash || schema_hash == "C_CS2HudModelWeapon"_hash )
+		{
+			return true;
+		}
+
+		// Their gun, defuser and the like are parented to the pawn's scene node.
+		const auto node = memory::safe_read<std::uintptr_t>( entity + SCHEMA( "C_BaseEntity", "m_pGameSceneNode"_hash ) ).value_or( 0 );
+		if ( !node )
+		{
+			return false;
+		}
+
+		const auto parent = memory::safe_read<std::uintptr_t>( node + SCHEMA( "CGameSceneNode", "m_pParent"_hash ) ).value_or( 0 );
+		if ( !parent )
+		{
+			return false;
+		}
+
+		return memory::safe_read<std::uintptr_t>( parent + SCHEMA( "CGameSceneNode", "m_pOwner"_hash ) ).value_or( 0 ) == pawn;
+	}
+
+	void camera::on_render( xdraw::draw_list& draw_list ) const
+	{
+		if ( !settings::g_misc.m_camera.spectate.value )
+		{
+			return;
+		}
+
+		const auto controller = this->m_spec_controller.load( );
+		if ( !controller || !systems::g_entities.exists( controller ) )
+		{
+			return;
+		}
+
+		const auto name_ptr = memory::safe_read<std::uintptr_t>( controller + SCHEMA( "CCSPlayerController", "m_sSanitizedPlayerName"_hash ) ).value_or( 0 );
+		const auto name = name_ptr ? memory::read_string( name_ptr, 63 ) : std::string{ "player" };
+
+		const auto label = this->m_spec_pawn.load( ) ? "spectating " + name : name + " is dead - waiting";
+
+		const auto [screen_w, screen_h] = xdraw::viewport_size( );
+		const auto [tw, th] = xdraw::measure_text( label );
+		const auto x = std::floorf( ( static_cast< float >( screen_w ) - tw ) * 0.5f );
+		const auto y = 60.0f;
+
+		draw_list.rect_filled( x - 8.0f, y - 4.0f, tw + 16.0f, th + 8.0f, xdraw::color{ 0, 0, 0, 160 } );
+		draw_list.text( x, y, label, xui::ctx( ).style.accent );
+	}
+
 	void camera::update_fov_sensitivity( std::uintptr_t player_pawn ) const
 	{
 		if ( !settings::g_misc.m_camera.change_fov.value )

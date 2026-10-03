@@ -364,11 +364,19 @@ namespace features::esp::projectile {
 		constexpr auto two_pi{ std::numbers::pi_v<float> *2.0f };
 		constexpr auto lerp_speed{ 6.0f };
 
+		// How far each flame's burn reaches around its own position. Flames sit roughly this far apart, so the
+		// circles overlap into one patch, and the hull drawn below is the area that hurts to walk through.
+		constexpr auto k_flame_radius{ 48.0f };
+
 		const auto delta_time = xdraw::delta_time( );
-		const auto drawable_count = memory::read<int>( entity.ptr + 0x8570 );
 		auto& state = this->m_inferno_states[ entity.ptr ];
 
-		const auto count = std::min( std::max( drawable_count, 0 ), 64 );
+		// Named fields only. This used to read the flame count, positions and radii at raw offsets (0x8570,
+		// 0x1970 + 432 per flame), which a game update moved: the zone then read zero flames and drew nothing.
+		const auto fire_count = memory::read<int>( entity.ptr + SCHEMA( "C_Inferno", "m_fireCount"_hash ) );
+		const auto count = std::min( std::max( fire_count, 0 ), 64 );
+		const auto positions = entity.ptr + SCHEMA( "C_Inferno", "m_firePositions"_hash );
+		const auto burning = entity.ptr + SCHEMA( "C_Inferno", "m_bFireIsBurning"_hash );
 		const auto lerp_t = std::fminf( lerp_speed * delta_time, 1.0f );
 
 		std::vector<math::vector3> world_points;
@@ -378,17 +386,13 @@ namespace features::esp::projectile {
 
 		for ( auto i = 0; i < count; ++i )
 		{
-			if ( !memory::read<bool>( entity.ptr + SCHEMA( "C_Inferno", "m_bFireIsBurning"_hash ) + i ) )
+			if ( !memory::read<bool>( burning + i ) )
 			{
 				continue;
 			}
 
-			const auto base = entity.ptr + 0x1970 + static_cast< std::size_t >( i ) * 432u;
-			const auto position = memory::read<math::vector3>( base );
-			const auto current_radius = memory::read<float>( base + 0x1a8 );
-			const auto target_radius = memory::read<float>( base + 0x1ac );
-
-			if ( current_radius < 1.0f )
+			const auto position = memory::read<math::vector3>( positions + static_cast< std::size_t >( i ) * sizeof( math::vector3 ) );
+			if ( position.length_sqr( ) < 1.0f )
 			{
 				continue;
 			}
@@ -397,8 +401,6 @@ namespace features::esp::projectile {
 			avg_pos = avg_pos + position;
 			++active_count;
 
-			const auto extent = std::fmaxf( 60.0f, current_radius );
-
 			for ( auto d = 0; d < num_directions; ++d )
 			{
 				const auto idx = i * num_directions + d;
@@ -406,10 +408,8 @@ namespace features::esp::projectile {
 				const auto dx = std::cosf( angle );
 				const auto dy = std::sinf( angle );
 
-				const auto trace_frac = memory::read<float>( base + 0x38 + d * sizeof( float ) );
-				const auto target = std::fminf( trace_frac * target_radius, extent );
-
-				state.current_radii[ idx ] += ( target - state.current_radii[ idx ] ) * lerp_t;
+				// Grows out from the flame's centre when it first catches, instead of popping in at full size.
+				state.current_radii[ idx ] += ( k_flame_radius - state.current_radii[ idx ] ) * lerp_t;
 
 				world_points.push_back( position + math::vector3{ dx * state.current_radii[ idx ], dy * state.current_radii[ idx ], 0.0f } );
 			}

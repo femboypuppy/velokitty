@@ -43,4 +43,31 @@ namespace steam {
 		static bool get_image_rgba( int image, std::uint8_t* dest, int dest_size );
 	};
 
+	/// ISteamNetworkingMessages through the Steam client: connectionless messages to another user by
+	/// SteamID, carried over Valve's relays. This is the Steam client's instance, not the copy of the
+	/// library the game links for its own server traffic, so nothing here touches the game's sessions.
+	class networking
+	{
+	public:
+		struct message
+		{
+			std::uint64_t sender{};
+			std::vector<std::uint8_t> data{};
+		};
+
+		static bool initialize( );
+
+		/// Queues a reliable message to `steam_id` on `channel`. Sending also accepts any session the
+		/// other side has already requested, which is how two peers that both send end up connected.
+		static bool send( std::uint64_t steam_id, int channel, const void* data, std::uint32_t size );
+
+		/// Accepts a pending session request from `steam_id`; false when there is none.
+		static bool accept( std::uint64_t steam_id );
+
+		/// Drains up to `max` messages waiting on `channel` into `out`.
+		static void receive( int channel, std::vector<message>& out, int max = 32 );
+
+		static void close_channel( std::uint64_t steam_id, int channel );
+	};
+
 } // namespace steam

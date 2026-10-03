@@ -732,6 +732,7 @@ namespace {
 			features::esp::player::g_chams.bt( ).shutdown( );
 			features::esp::player::g_chams.os( ).shutdown( );
 		} );
+		diag::guard( "unload: aimwhere users", [ ] { features::misc::g_aimwhere_users.shutdown( ); } );
 		diag::guard( "unload: weather", [ ] { features::world::g_weather.release( ); } );
 		diag::guard( "unload: dlight", [ ] { features::misc::g_dlight.on_level_shutdown( ); } );
 		diag::guard( "unload: material clones", [ ] { systems::materials::clear_clones( ); } );

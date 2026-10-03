@@ -66,4 +66,4 @@ jobs:
         run: |
           # The release notes are the message of the commit that bumped the version.
           git log -1 --format=%B | Out-File notes.md -Encoding utf8
-          gh release create "${{ steps.version.outputs.tag }}" out/cs2.dll --target $env:GITHUB_SHA --title "velokitty ${{ steps.version.outputs.version }}" --notes-file notes.md
+          gh release create "${{ steps.version.outputs.tag }}" out/cs2.dll --target $env:GITHUB_SHA --title "aimwhere ${{ steps.version.outputs.version }}" --notes-file notes.md

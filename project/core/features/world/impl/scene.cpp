@@ -398,6 +398,68 @@ namespace features::world {
 		}
 	}
 
+	void scene::on_draw_world_meshes (std::uintptr_t batch, int batch_count, mesh_source source) const {
+		if (!settings::g_world.m_scene.world_setting.value || !batch || batch_count <= 0 || batch_count > (1 << 20)) {
+			return;
+		}
+
+		// True when the mesh is part of a player, something they own (gun, wearables) or our first-person
+		// arms. Animatable objects include all of those, and tinting them would paint over chams.
+		const auto is_model_owned = [] (std::uintptr_t scene_object) {
+			const auto handle = memory::safe_read<std::uint32_t> (scene_object + 0xc0).value_or (0);
+			if (!handle || handle == 0xffffffffu) {
+				return false;
+			}
+
+			const auto entity = systems::g_entities.lookup (handle);
+			if (!entity) {
+				return false;
+			}
+
+			const auto hash = fnv1a::runtime_hash (systems::g_entities.get_schema_name (entity));
+			if (hash == "C_CSPlayerPawn"_hash || hash == "C_CS2HudModelArms"_hash || hash == "C_CS2HudModelWeapon"_hash) {
+				return true;
+			}
+
+			const auto owner = memory::safe_read<std::uint32_t> (entity + SCHEMA ("C_BaseEntity", "m_hOwnerEntity"_hash)).value_or (0);
+			return owner && owner != 0xffffffffu && systems::g_entities.lookup (owner) != 0;
+		};
+
+		const auto color = static_cast<std::uint32_t> (settings::g_world.m_scene.world_color.value);
+		const auto filter = source != mesh_source::aggregate;
+
+		std::uintptr_t last_object{};
+		auto last_skip{false};
+		auto tinted{0};
+
+		for (auto i = 0; i < batch_count; ++i) {
+			const auto mesh = batch + (static_cast<std::size_t> (i) * 0x70);
+
+			if (filter) {
+				// Consecutive primitives usually belong to the same object; resolve its owner once.
+				const auto scene_object = memory::safe_read<std::uintptr_t> (mesh + 0x18).value_or (0);
+				if (scene_object != last_object) {
+					last_object = scene_object;
+					last_skip = scene_object && is_model_owned (scene_object);
+				}
+
+				if (last_skip) {
+					continue;
+				}
+			}
+
+			if (memory::safe_write<std::uint32_t> (mesh + 0x50, color)) {
+				++tinted;
+			}
+		}
+
+		auto& logged = this->m_source_logged [static_cast<std::size_t> (source)];
+		if (tinted > 0 && !logged.exchange (true)) {
+			constexpr const char* names [] {"aggregate", "animatable", "instanced"};
+			diag::writef (diag::level::info, "world color: %s meshes tinted (first batch %d of %d)", names [static_cast<std::size_t> (source)], tinted, batch_count);
+		}
+	}
+
 	bool scene::on_setup_fog (__m128i* output, int* mode) const {
 		const auto& fog = settings::g_world.m_weather;
 		if (!fog.fog_enabled.value || !output || !mode) {

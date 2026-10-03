@@ -27,6 +27,12 @@ namespace hooks {
 		static std::uintptr_t __fastcall light_scene_object( std::uintptr_t thisptr, std::uintptr_t object, std::uintptr_t a3 );
 		static void __fastcall draw_scene_object_array( std::uintptr_t thisptr, std::uintptr_t a2, std::uintptr_t object_array );
 		static std::uintptr_t __fastcall draw_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, int a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8 );
+
+		// Twelve arguments passed straight through: more than these take, so none is cut off whatever their
+		// real stack argument count is.
+		static std::uintptr_t __fastcall draw_aggregate_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, std::uintptr_t a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8, std::uintptr_t a9, std::uintptr_t a10, std::uintptr_t a11, std::uintptr_t a12 );
+		static std::uintptr_t __fastcall draw_animatable_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, std::uintptr_t a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8, std::uintptr_t a9, std::uintptr_t a10, std::uintptr_t a11, std::uintptr_t a12 );
+		static std::uintptr_t __fastcall draw_instanced_scene_object( std::uintptr_t a1, std::uintptr_t a2, std::uintptr_t batch, int batch_count, std::uintptr_t a5, std::uintptr_t a6, std::uintptr_t a7, std::uintptr_t a8, std::uintptr_t a9, std::uintptr_t a10, std::uintptr_t a11, std::uintptr_t a12 );
 		static bool __fastcall is_glowing( std::uintptr_t glow_property );
 		static void __fastcall get_glow_color( std::uintptr_t glow_property, float* color );
 		static void __fastcall generate_primitives( std::uintptr_t thisptr, std::uintptr_t scene_object, std::uintptr_t scene_view, std::uintptr_t primitive_buffer );
@@ -79,6 +85,9 @@ namespace hooks {
 		inline static hooking::jmp m_light_scene_object{};
 		inline static hooking::jmp m_draw_scene_object_array{};
 		inline static hooking::jmp m_draw_scene_object{};
+		inline static hooking::jmp m_draw_aggregate_scene_object{};
+		inline static hooking::jmp m_draw_animatable_scene_object{};
+		inline static hooking::jmp m_draw_instanced_scene_object{};
 		inline static hooking::jmp m_is_glowing{};
 		inline static hooking::jmp m_get_glow_color{};
 		inline static hooking::jmp m_generate_primitives{};

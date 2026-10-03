@@ -5,6 +5,15 @@
 
 namespace rendering {
 
+	/// The aimwhere mark: crosshair ring and ticks around a question mark, one colour, drawn white on a
+	/// 32-unit canvas so a tint colours it. This is the heavy-stroke cut that stays legible down to
+	/// 12px -- the menu pill, the watermark and the ESP badge all load it at their own size.
+	namespace brand {
+
+		inline constexpr auto mark = R"(<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M27.3 19.6A12 12 0 0 1 19.6 27.3M12.4 27.3A12 12 0 0 1 4.7 19.6M4.7 12.4A12 12 0 0 1 12.4 4.7M19.6 4.7A12 12 0 0 1 27.3 12.4M16 2V6.2M16 25.8V30M2 16H6.2M25.8 16H30" stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M12.7 13.3C12.7 11.3 14.2 10 16 10C17.8 10 19.3 11.2 19.3 13C19.3 14.6 18.2 15.3 17.1 16C16.4 16.5 16 17 16 18" stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="16" cy="21.9" r="1.8" fill="white"/></svg>)";
+
+	} // namespace brand
+
 	class context
 	{
 	public:
@@ -73,6 +82,10 @@ namespace rendering {
         void draw_config( float group_w );
         void draw_theme( float group_w ) const;
         void draw_unload( );
+
+        /// The spectate player picker: a small window of its own beside the menu, shown while
+        /// misc > camera > spectate is ticked.
+        void draw_spectate_window( float reveal );
 
         /// A transparent scroll region covering the page body, closed on scope exit.
         ///
@@ -144,6 +157,10 @@ namespace rendering {
         float m_body_w{};
         float m_body_h{};
 
+        /// Spectate window position; x below zero means not placed yet.
+        float m_spec_x{ -1.0f };
+        float m_spec_y{};
+
         /// The unload page, opened from the avatar in the sidebar. It is a page of its own rather than a
         /// tab, so it never appears in the tab strip or in search.
         bool m_unload_open{};
@@ -183,7 +200,20 @@ namespace rendering {
                 int height{};
             };
 
+            /// One-colour mark for the glass skin's logo pill.
             entry logo{};
+
+            /// The two-tone mark at the head of the legacy tab column: ring and ticks in the accent, the
+            /// question mark in the text colour. Two textures because a tint is one colour per image.
+            entry logo_ring{};
+            entry logo_glyph{};
+
+            /// The same mark and the "aim" / "where" wordmark at splash size, for the intro.
+            entry intro_ring{};
+            entry intro_glyph{};
+            entry intro_aim{};
+            entry intro_where{};
+
             entry user{};
             entry tabs[ 8 ]{};
             entry search{};
@@ -193,7 +223,6 @@ namespace rendering {
             entry cfg_cloud_on{};
             entry cfg_cloud_off{};
             entry cfg_plus{};
-			entry intro_splash{};
         } m_textures{};
 
         static constexpr auto k_max_subtabs{ 6 };
@@ -237,7 +266,7 @@ namespace rendering {
 
         static constexpr const char* k_preset_names[ k_preset_count ]
         {
-            "velocity", "amethyst", "seafoam", "ember", "graphite"
+            "aimwhere", "amethyst", "seafoam", "ember", "graphite"
         };
     };
 

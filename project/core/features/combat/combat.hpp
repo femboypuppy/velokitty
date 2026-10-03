@@ -759,6 +759,22 @@ namespace features::combat {
 		void on_render( xdraw::draw_list& draw_list );
 		void invalidate_if_needed( );
 
+		/// Runs once per rendered frame, ahead of the game's own mouse handling. The aim moves the view here
+		/// rather than in create_move: a 64 Hz step shows up as stutter at any frame rate above the tick
+		/// rate, and the target's rendered bones move every frame, not every tick.
+		void on_frame_input( std::uintptr_t csgo_input, int slot, float frametime );
+
+		enum class wallbang_state : std::uint8_t
+		{
+			none,
+			soon,
+			now
+		};
+
+		/// For the esp: whether this pawn can be wallbanged from here, or from where the current movement
+		/// is heading. Safe to call from the render thread.
+		[[nodiscard]] wallbang_state wallbang_preview( std::uintptr_t pawn ) const;
+
 		[[nodiscard]] bool has_target( ) const noexcept { return this->m_target.has_target( ); }
 
 	private:
@@ -786,11 +802,42 @@ namespace features::combat {
 			int health{};
 			shared::lagcomp::record* record{};
 
+			/// The point came off the newest record, so the aim can follow the live, rendered bone instead of
+			/// a snapshot that only updates once per tick.
+			bool newest{};
+
 			[[nodiscard]] bool has_target( ) const noexcept { return this->best_point.valid; }
 		};
 
+		/// What on_frame_input steers toward between two create_moves. Re-armed every tick the scan still
+		/// finds the target; a tick without it disarms it.
+		struct track_state
+		{
+			std::uintptr_t pawn{};
+			int bone_index{ -1 };
+			math::vector3 local_center{};
+			bool has_hitbox{};
+			math::vector3 fixed_point{};
+			bool live{};
+			int smooth{};
+			bool active{};
+			std::chrono::steady_clock::time_point refreshed{};
+
+			math::vector3 prev_desired{};
+			bool has_prev{};
+		};
+
+		struct preview_entry
+		{
+			std::uintptr_t pawn{};
+			wallbang_state state{};
+		};
+
 		[[nodiscard]] target_result find_target( const math::vector3& shoot_position, const math::vector3& view_angles, const settings::combat::legitbot::weapon_group& config, const systems::local::snapshot& local ) const;
-		[[nodiscard]] scan_point scan_player( std::uintptr_t pawn, shared::lagcomp::record* record, const systems::hitboxes::set& hitboxes, const math::vector3& shoot_position, const math::vector3& view_angles, const settings::combat::legitbot::weapon_group& config, const systems::local::snapshot& local ) const;
+		/// sticky_bone is the bone already being tracked on this pawn, or -1. It keeps the point unless another
+		/// one ranks strictly higher (visible over occluded, head over body), so damage and crosshair-distance
+		/// ties can't flip the aim between two hitboxes every tick.
+		[[nodiscard]] scan_point scan_player( std::uintptr_t pawn, shared::lagcomp::record* record, const systems::hitboxes::set& hitboxes, const math::vector3& shoot_position, const math::vector3& view_angles, const settings::combat::legitbot::weapon_group& config, const systems::local::snapshot& local, int sticky_bone ) const;
 
 		/// Newest record first, then the middle and oldest of the valid window, capped at max_records.
 		/// Shared by the aimbot's backtrack and the triggerbot, which had this inline as a lambda.
@@ -811,18 +858,24 @@ namespace features::combat {
 		[[nodiscard]] bool update_engagement( std::uintptr_t pawn, const settings::combat::legitbot::weapon_group& config );
 		void reset_engagement( );
 
-		void apply_aimbot( systems::input::usercmd* cmd, const target_result& tgt, const math::vector3& view_angles, const math::vector3& aim_punch, const settings::combat::legitbot::weapon_group& config, const systems::local::snapshot& local );
-		void apply_triggerbot( systems::input::usercmd* cmd, const math::vector3& shoot_position, const math::vector3& view_angles, const math::vector3& aim_punch, const settings::combat::legitbot::weapon_group& config, const systems::local::snapshot& local );
-		void apply_rcs( math::vector3& aim_angle, const math::vector3& aim_punch, int rand_min, int rand_max ) const;
+		/// Hands the scan's winner to on_frame_input once the reaction delay has run out.
+		void arm_tracking( const target_result& tgt, const settings::combat::legitbot::weapon_group& config );
+		void apply_triggerbot( systems::input::usercmd* cmd, const math::vector3& shoot_position, const math::vector3& view_angles, const math::vector3& aim_punch, float rcs_scale, const settings::combat::legitbot::weapon_group& config, const systems::local::snapshot& local );
 
-		void update_standalone_rcs( const math::vector3& view_angles, const math::vector3& aim_punch, int amount, int rand_min, int rand_max, bool apply, const systems::local::snapshot& local );
-		[[nodiscard]] float compute_rcs_factor( int rand_min, int rand_max ) const;
+		/// Takes the recoil out of the shot's input history angles, scaled by rcs_scale. The camera is never
+		/// touched.
+		void apply_recoil_control( systems::input::usercmd* cmd, float rcs_scale, const systems::local::snapshot& local ) const;
 
-		void draw_fov( xdraw::draw_list& draw_list, const math::vector3& view_angles, const math::vector3& aim_punch, float fov_degrees, const config::col& color, bool rcs_active ) const;
+		void update_wallbang_preview( const settings::combat::legitbot::weapon_group& config, const systems::local::snapshot& local );
+
+		void draw_fov( xdraw::draw_list& draw_list, float fov_degrees, const config::col& color ) const;
 
 		target_result m_target{};
-		math::vector3 m_old_punch{};
-		mutable float m_last_significant_punch_time{};
+		track_state m_track{};
+
+		std::vector<preview_entry> m_preview{};
+		mutable std::mutex m_preview_mtx{};
+		int m_preview_counter{};
 
 		float m_remainder_x{};
 		float m_remainder_y{};
@@ -838,11 +891,9 @@ namespace features::combat {
 		float m_error_y{};
 
 		float m_trigger_delay_start{};
+		float m_trigger_delay_ms{};
 		float m_trigger_release_time{};
 		std::uintptr_t m_trigger_pending_pawn{};
-
-		math::vector3 m_cached_view_angles{};
-		math::vector3 m_cached_aim_punch{};
 	};
 
 } // namespace features::combat

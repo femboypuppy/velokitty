@@ -142,6 +142,12 @@ namespace settings {
 		{
 			static constexpr auto k_group_count{ 6u };
 
+			static constexpr const char* k_trigger_modes[ ]{ "legit", "semi", "blatant" };
+
+			/// Delay range in ms per trigger mode. A human reaction to something appearing under the crosshair
+			/// is roughly 150-250 ms; under ~50 ms reads as a bot to anyone watching a demo.
+			static constexpr std::array<std::pair<int, int>, 3> k_trigger_delay_range{ { { 120, 300 }, { 50, 150 }, { 0, 50 } } };
+
 			struct weapon_group
 			{
 				xui::setting aimbot{ false, { VK_XBUTTON2, xui::bind_mode::hold_on }, "aimbot", "legitbot" };
@@ -165,17 +171,30 @@ namespace settings {
 				config::val<int> backtrack_ticks{ 1 };
 				config::val<int> aim_hitchance{ 0 };
 
+				// Silent: the compensation goes into the shot's input history angles and never touches the
+				// camera, so the crosshair stays exactly where the player put it. 100% = bullets land on the
+				// crosshair (spread aside), lower values leave part of the spray pattern in.
 				xui::setting rcs{ true, {}, "recoil control", "legitbot" };
-				config::val<int> rcs_min{ 95 };
-				config::val<int> rcs_max{ 105 };
-
-				xui::setting standalone_rcs{ false, {}, "standalone rcs", "legitbot" };
-				config::val<int> standalone_rcs_strength{ 100 };
-				config::val<int> standalone_rcs_min{ 95 };
-				config::val<int> standalone_rcs_max{ 105 };
+				config::val<int> rcs_strength{ 100 };
 
 				xui::setting triggerbot{ false, { VK_XBUTTON1, xui::bind_mode::hold_on }, "triggerbot", "legitbot" };
-				config::val<int> trigger_delay{ 5 };
+				/// 0 legit, 1 semi, 2 blatant. Each mode keeps its own delay, and the menu slider's range follows
+				/// the mode (k_trigger_delay_range). Legit and semi also vary each shot's delay a little, the way a
+				/// reaction does; blatant fires on the exact number.
+				config::val<int> trigger_mode{ 0 };
+				config::val<int> trigger_delay_legit{ 160 };
+				config::val<int> trigger_delay_semi{ 80 };
+				config::val<int> trigger_delay_blatant{ 15 };
+
+				[[nodiscard]] config::val<int>& trigger_delay( )
+				{
+					return this->trigger_mode.value == 2 ? this->trigger_delay_blatant : this->trigger_mode.value == 1 ? this->trigger_delay_semi : this->trigger_delay_legit;
+				}
+
+				[[nodiscard]] const config::val<int>& trigger_delay( ) const
+				{
+					return this->trigger_mode.value == 2 ? this->trigger_delay_blatant : this->trigger_mode.value == 1 ? this->trigger_delay_semi : this->trigger_delay_legit;
+				}
 				config::val<int> trigger_hitchance{ 80 };
 				xui::setting trigger_head_only{ false, {}, "trigger head only", "legitbot" };
 				xui::setting give_me_your_seed{ false, {}, "trigger seed mode", "legitbot" };
@@ -202,7 +221,6 @@ namespace settings {
 
 					this->aimbot.category = s;
 					this->rcs.category = s;
-					this->standalone_rcs.category = s;
 					this->triggerbot.category = s;
 					this->trigger_head_only.category = s;
 					this->give_me_your_seed.category = s;
@@ -217,12 +235,11 @@ namespace settings {
 					this->aim_error.reg( s, "aim error" );
 					this->backtrack_ticks.reg( s, "backtrack ticks" );
 					this->aim_hitchance.reg( s, "aim hitchance" );
-					this->rcs_min.reg( s, "rcs min" );
-					this->rcs_max.reg( s, "rcs max" );
-					this->standalone_rcs_strength.reg( s, "standalone rcs strength" );
-					this->standalone_rcs_min.reg( s, "standalone rcs min" );
-					this->standalone_rcs_max.reg( s, "standalone rcs max" );
-					this->trigger_delay.reg( s, "trigger delay" );
+					this->rcs_strength.reg( s, "rcs strength" );
+					this->trigger_mode.reg( s, "trigger mode" );
+					this->trigger_delay_legit.reg( s, "trigger delay legit" );
+					this->trigger_delay_semi.reg( s, "trigger delay semi" );
+					this->trigger_delay_blatant.reg( s, "trigger delay blatant" );
 					this->trigger_hitchance.reg( s, "trigger hitchance" );
 					this->min_damage.reg( s, "min damage" );
 					this->fov_color.reg( s, "fov color" );
@@ -230,6 +247,13 @@ namespace settings {
 			};
 
 			xui::setting enabled{ false, {}, "enabled", "legitbot" };
+
+			/// Lights an enemy's esp box up when they can be wallbanged from where you stand (solid) or from
+			/// where your current movement takes you within half a second (pulsing). Uses the held weapon's
+			/// min damage.
+			xui::setting visualize_aimbot{ false, {}, "visualise aimbot", "legitbot" };
+			config::col visualize_aimbot_color{ { 255, 150, 60, 255 }, "legitbot", "visualise aimbot color" };
+
 			std::array<weapon_group, k_group_count> groups{};
 
 			legitbot( )
@@ -1258,6 +1282,12 @@ namespace settings {
 			config::col color{ { 255, 255, 0, 255 }, "misc", "scoreboard weapons color" };
 		} m_scoreboard_weapons{};
 
+		/// Detecting other aimwhere users (and being detectable) over Steam peer-to-peer messages.
+		struct aimwhere_users
+		{
+			xui::setting enabled{ true, {}, "aimwhere badges", "misc" };
+		} m_aimwhere_users{};
+
 		struct name_changer
 		{
 			/// How the tag animates. `fixed` ships the text exactly as typed and so submits one name
@@ -1266,7 +1296,7 @@ namespace settings {
 			enum class clantag_style : int { fixed, typewriter, marquee };
 
 			xui::setting clantag{ false, {}, "clantag", "name changer" };
-			config::str clantag_text{ "velocity", "name changer", "clantag text" };
+			config::str clantag_text{ "aimwhere", "name changer", "clantag text" };
 			config::enm<clantag_style> clantag_mode{ clantag_style::typewriter, "name changer", "clantag style" };
 			config::val<float> clantag_speed{ 4.0f, "name changer", "clantag speed" };
 			xui::setting clantag_brackets{ true, {}, "clantag brackets", "name changer" };
@@ -1370,6 +1400,10 @@ namespace settings {
 
 			xui::setting change_aspect_ratio{ false, {}, "custom aspect ratio", "camera" };
 			config::val<float> aspect_ratio{ 1.333f, "camera", "aspect ratio" };
+
+			/// Shows the player picker next to the menu and, once someone is picked, renders the game
+			/// from their eyes. Bindable, so a key can drop back to your own view.
+			xui::setting spectate{ false, {}, "spectate", "camera" };
 		} m_camera{};
 
 		struct viewmodel_adjust
@@ -1603,6 +1637,10 @@ namespace settings {
 			xui::setting ambient{ true, {}, "ambient", "scene" };
 			config::col ambient_color{ { 233, 145, 255, 255 }, "scene", "ambient color" };
 			config::val<float> ambient_intensity{ 1.1f, "scene", "ambient intensity" };
+
+			/// Tints smoke grenade clouds; the colour's alpha is the cloud's opacity (255 = untouched).
+			xui::setting smoke_color{ false, {}, "smoke color", "scene" };
+			config::col smoke_color_value{ { 170, 190, 255, 255 }, "scene", "smoke color value" };
 		} m_scene{};
 	};
 

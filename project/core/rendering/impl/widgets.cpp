@@ -39,7 +39,7 @@ namespace rendering {
 		constexpr auto text_pad_x{ 8.0f };
 		constexpr auto text_nudge{ 0.5f };
 		constexpr auto section_spacing{ 2.0f };
-		constexpr auto logo_icon_size{ 12.0f };
+		constexpr auto logo_icon_size{ 16.0f };
 		constexpr auto logo_icon_pad{ 7.0f };
 
 		// ── time ────────────────────────────────────────────────────────────
@@ -125,15 +125,15 @@ namespace rendering {
 
 
 		// ── logo ────────────────────────────────────────────────────────────
-		const auto logo_scale = logo_icon_size / 12.0f;
+		const auto logo_scale = logo_icon_size / 32.0f;
 		static auto logo_w = 0, logo_h = 0;
-		static const auto logo = xdraw::load_svg( R"(<svg width="15" height="12" viewBox="0 0 15 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0.131688 9.02626L6.40009 0.551371C6.94385 -0.18379 8.07861 -0.18379 8.62237 0.551371L14.8681 8.99564C15.2003 9.44476 14.8666 10.0674 14.2937 10.0674H12.9205C12.5679 10.0674 12.2512 9.86022 12.1214 9.54481L10.2638 5.0302C10.1631 4.78558 9.91739 4.62489 9.64393 4.62489C9.52346 4.62489 9.43618 4.73535 9.46834 4.84701L11.2808 11.1405C11.4053 11.5727 11.0674 12 10.6014 12H9.36667C9.09606 12 8.86578 11.8102 8.82422 11.5529L7.71627 3.99646C7.68733 3.81739 7.36739 3.82052 7.33103 3.99836L5.84387 11.5738C5.79319 11.8214 5.56756 12 5.30526 12H4.07334C3.594 12 3.25442 11.5497 3.40311 11.1112L5.4932 4.94752C5.54344 4.79932 5.42867 4.64708 5.26665 4.64708H5.22153C4.95747 4.64708 4.71827 4.79707 4.61165 5.02955L2.5027 9.62798C2.36225 9.93422 2.04374 10.1288 1.69595 10.1208L0.689398 10.0978C0.124293 10.0848 -0.195983 9.46937 0.131756 9.02626H0.131688Z" fill="#111111"/></svg>)", logo_scale, &logo_w, &logo_h );
+		static const auto logo = xdraw::load_svg( brand::mark, logo_scale, &logo_w, &logo_h );
 
 		const auto inner_h     = h - inner_pad * 2.0f;
 		const auto logo_draw_w = static_cast<float>( logo_w );
 
 		// ── measure text ─────────────────────────────────────────────────────
-		const auto [name_tw, name_th] = xdraw::measure_text( "velocity.cat" );
+		const auto [name_tw, name_th] = xdraw::measure_text( "aimwhere" );
 		const auto [user_tw, user_th] = xdraw::measure_text( "developer" );
 		const auto [ping_vw, ping_vh] = xdraw::measure_text( ping_val );
 		const auto [ping_uw, ping_uh] = xdraw::measure_text( " ms" );
@@ -214,7 +214,7 @@ namespace rendering {
 			draw_list.image( cx + logo_icon_pad, y + ( h - static_cast<float>( logo_h ) ) * 0.5f,
 				static_cast<float>( logo_w ), static_cast<float>( logo_h ), logo.Get( ), s.checkbox_mark_icon );
 		draw_list.text( cx + logo_icon_pad + logo_draw_w + logo_icon_pad,
-			y + ( h - name_th ) * 0.5f + text_nudge, "velocity.cat", s.checkbox_mark_icon );
+			y + ( h - name_th ) * 0.5f + text_nudge, "aimwhere", s.checkbox_mark_icon );
 		cx += logo_pill_w + section_spacing;
 
 		if ( wm.show_user.value ) draw_pill( "developer", user_tw, user_th, user_pill_w );
@@ -340,7 +340,7 @@ namespace rendering {
 			for ( auto i = 0u; i < settings::combat::legitbot::k_group_count; ++i )
 			{
 				const auto& g = settings::g_combat.m_legitbot.groups[ i ];
-				if ( setting == &g.aimbot || setting == &g.rcs || setting == &g.standalone_rcs || setting == &g.triggerbot || setting == &g.autowall || setting == &g.visualize_fov || setting == &g.trigger_head_only || setting == &g.give_me_your_seed )
+				if ( setting == &g.aimbot || setting == &g.rcs || setting == &g.triggerbot || setting == &g.autowall || setting == &g.visualize_fov || setting == &g.trigger_head_only || setting == &g.give_me_your_seed )
 				{
 					is_legit_group = true;
 					break;
@@ -362,7 +362,7 @@ namespace rendering {
 					if ( &settings::g_combat.m_legitbot.groups[ i ] == active_group )
 					{
 						const auto& g = settings::g_combat.m_legitbot.groups[ i ];
-						if ( setting == &g.aimbot || setting == &g.rcs || setting == &g.standalone_rcs || setting == &g.triggerbot || setting == &g.autowall || setting == &g.visualize_fov || setting == &g.trigger_head_only || setting == &g.give_me_your_seed )
+						if ( setting == &g.aimbot || setting == &g.rcs || setting == &g.triggerbot || setting == &g.autowall || setting == &g.visualize_fov || setting == &g.trigger_head_only || setting == &g.give_me_your_seed )
 						{
 							is_active = true;
 						}

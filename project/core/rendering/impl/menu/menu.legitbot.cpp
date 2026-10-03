@@ -38,6 +38,14 @@ namespace rendering {
 		if ( xui::begin_child( "general##legitbot_master", col_w ) )
 		{
 			xui::checkbox( "enabled", lb.enabled );
+
+			xui::checkbox( "visualise aimbot", lb.visualize_aimbot );
+			if ( xui::begin_popup( "##visualize_aimbot_popup", 220.0f ) )
+			{
+				xui::color_picker( "color##visualize_aimbot", lb.visualize_aimbot_color );
+				xui::end_popup( );
+			}
+
 			xui::end_child( );
 		}
 
@@ -62,16 +70,9 @@ namespace rendering {
 
 		if ( xui::begin_child( "recoil control##legitbot_rcs", col_w ) )
 		{
-			// Both pairs are a randomised range around 100%, not an axis split -- compute_rcs_factor
-			// picks a value between them per shot so the compensation never repeats exactly.
+			// Silent: only the bullet is corrected, the camera stays where the player puts it.
 			xui::checkbox( "recoil control", wg.rcs );
-			xui::slider_int( "strength min##rcs", wg.rcs_min, 0, 200, "%d%%" );
-			xui::slider_int( "strength max##rcs", wg.rcs_max, 0, 200, "%d%%" );
-
-			xui::checkbox( "standalone rcs", wg.standalone_rcs );
-			xui::slider_int( "strength##srcs", wg.standalone_rcs_strength, 0, 100, "%d%%" );
-			xui::slider_int( "strength min##srcs", wg.standalone_rcs_min, 0, 200, "%d%%" );
-			xui::slider_int( "strength max##srcs", wg.standalone_rcs_max, 0, 200, "%d%%" );
+			xui::slider_int( "strength##rcs", wg.rcs_strength, 0, 100, "%d%%" );
 
 			xui::end_child( );
 		}
@@ -81,7 +82,15 @@ namespace rendering {
 		if ( xui::begin_child( "triggerbot##legitbot_triggerbot", col_w ) )
 		{
 			xui::checkbox( "triggerbot", wg.triggerbot );
-			xui::slider_int( "delay", wg.trigger_delay, 0, 250, "%dms" );
+
+			// The slider's range follows the mode; each mode remembers its own value.
+			wg.trigger_mode.value = std::clamp( wg.trigger_mode.value, 0, 2 );
+			xui::combo( "mode##trig", wg.trigger_mode.value, settings::combat::legitbot::k_trigger_modes, 3 );
+
+			const auto [delay_min, delay_max] = settings::combat::legitbot::k_trigger_delay_range[ wg.trigger_mode.value ];
+			auto& delay = wg.trigger_delay( );
+			delay.value = std::clamp( delay.value, delay_min, delay_max );
+			xui::slider_int( "delay", delay.value, delay_min, delay_max, "%dms" );
 			xui::slider_int( "hit chance##trig", wg.trigger_hitchance, 0, 100, "%d%%" );
 			xui::checkbox( "head only", wg.trigger_head_only );
 			xui::checkbox( "seed mode", wg.give_me_your_seed );
