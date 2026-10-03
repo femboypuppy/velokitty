@@ -311,6 +311,10 @@ namespace hooks {
 			} );
 		}
 
+		// Before the in-game gate: the presence has to keep updating in the main menu too, or it stays
+		// stuck on the last match. It throttles itself to once a second, so any stage will do.
+		diag::guard( "frame_stage_notify: discord", [ ] { features::misc::g_discord_rpc.on_frame_stage_notify( ); } );
+
 		if ( !systems::g_local.get( ).is_valid( ) || !systems::g_view.has_camera( ) || stage != 6 )
 		{
 			return;
@@ -331,8 +335,8 @@ namespace hooks {
 		diag::set_exception_phase( "frame_stage_notify: scoreboard and kill feed" );
 		diag::guard( "frame_stage_notify: scoreboard", [ ] { features::misc::g_scoreboard_weapons.on_frame_stage_notify( ); } );
 		diag::guard( "frame_stage_notify: aimwhere users", [ ] { features::misc::g_aimwhere_users.on_frame_stage_notify( ); } );
-		diag::guard( "frame_stage_notify: discord", [ ] { features::misc::g_discord_rpc.on_frame_stage_notify( ); } );
 		diag::guard( "frame_stage_notify: kill feed", [ ] { features::misc::g_other.do_kill_feed_preservation( ); } );
+		diag::guard( "frame_stage_notify: bomb damage", [ ] { features::esp::other::g_overlay.on_frame_stage_notify( ); } );
 	}
 	void __fastcall cheat::create_move( std::uintptr_t thisptr, int slot, bool active )
 	{

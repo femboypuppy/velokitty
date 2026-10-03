@@ -18,6 +18,11 @@ namespace rendering {
 		auto confirm_timer{ 0.0f };
 		auto migrated{ false };
 
+		/// Seconds since the folder was last read. Files dropped into it from outside -- a config someone
+		/// sent over -- show up within this long, without a refresh.
+		auto rescan_timer{ 0.0f };
+		constexpr auto k_rescan_interval{ 1.0f };
+
 		/// Set when a config is created, resolved to an index on the next refresh. The list is sorted
 		/// by name, so a brand-new config's row index is not knowable until after it is re-read.
 		std::wstring pending_select{};
@@ -177,10 +182,23 @@ namespace rendering {
 			detail::migrated = true;
 		}
 
+		detail::rescan_timer += xdraw::delta_time( );
+		if ( detail::rescan_timer >= detail::k_rescan_interval )
+		{
+			detail::needs_refresh = true;
+		}
+
 		if ( detail::needs_refresh )
 		{
+			// A new file can land anywhere in the sorted list, so keep the selection by name, not by row.
+			if ( detail::pending_select.empty( ) && detail::selected >= 0 && detail::selected < static_cast< int >( detail::config_list.size( ) ) )
+			{
+				detail::pending_select = detail::config_list[ detail::selected ];
+			}
+
 			detail::config_list = config::files::list( );
 			detail::needs_refresh = false;
+			detail::rescan_timer = 0.0f;
 
 			if ( !detail::pending_select.empty( ) )
 			{

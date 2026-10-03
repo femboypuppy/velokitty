@@ -2,6 +2,7 @@
 #include <utilities/memory/memory.hpp>
 #include <utilities/addresses/addresses.hpp>
 #include <utilities/steam/steam.hpp>
+#include <protection/game_addresses.hpp>
 #include <core/rendering/rendering.hpp>
 #include <core/settings.hpp>
 #include <core/features/features.hpp>
@@ -157,6 +158,46 @@ namespace features::esp::other {
 		this->add_bomb( draw_list );
 	}
 
+	void overlay::on_frame_stage_notify( )
+	{
+		// Since the July 2026 bomb update the blast is a shockwave that bends round corners and stops at
+		// walls, from per-site data baked into each map; distance alone no longer predicts it. This is the
+		// same pair of calls the HUD's ExpectedBombHealthBar makes: for each planted bomb, a check that it
+		// applies to the local player, then the expected damage as a byte. The largest one wins.
+		static constexpr std::ptrdiff_t k_next_planted_c4{ 0x1280 };
+		static constexpr auto k_max_bombs{ 8 };
+
+		const auto affects_local = PATTERN( patterns::planted_c4_affects_local );
+		const auto expected_damage = PATTERN( patterns::planted_c4_expected_damage );
+		const auto view_pawn = systems::g_local.get( ).view_pawn( );
+
+		auto best{ -1 };
+		if ( affects_local && expected_damage && view_pawn )
+		{
+			auto c4 = memory::safe_read<std::uintptr_t>( addresses::globals::planted_c4 ).value_or( 0 );
+			for ( auto i = 0; c4 && i < k_max_bombs; ++i )
+			{
+				if ( memory::call<bool>( affects_local, c4, view_pawn ) )
+				{
+					std::uint8_t damage{};
+					std::array<float, 4> direction{};
+					if ( memory::call<bool>( expected_damage, c4, view_pawn, &damage, direction.data( ) ) )
+					{
+						best = std::max( best, static_cast< int >( damage ) );
+					}
+				}
+				else
+				{
+					best = std::max( best, 0 );
+				}
+
+				c4 = memory::safe_read<std::uintptr_t>( c4 + k_next_planted_c4 ).value_or( 0 );
+			}
+		}
+
+		this->m_bomb_damage.store( best, std::memory_order_relaxed );
+	}
+
 	void overlay::add_bomb( xdraw::draw_list& draw_list )
 	{
 		const auto local = systems::g_local.get( );
@@ -197,6 +238,13 @@ namespace features::esp::other {
 
 		const auto calculate_bomb_damage = [ & ]( ) -> float
 			{
+				if ( const auto game_damage = this->m_bomb_damage.load( std::memory_order_relaxed ); game_damage >= 0 )
+				{
+					return static_cast< float >( game_damage );
+				}
+
+				// Pre-update formula: straight-line distance, walls ignored. Only reached when the game has no
+				// baked data for this map.
 				const auto view_pawn = local.view_pawn( );
 				if ( !view_pawn )
 				{

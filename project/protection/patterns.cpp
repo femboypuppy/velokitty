@@ -435,6 +435,16 @@ namespace patterns {
 		::protection::addresses::address_type::pattern,
 		"client.dll:488B1D*????????488BD34C8B81");
 
+	const ::protection::addresses::address_t& planted_c4_affects_local = ADDRESS_IMPL(
+		::protection::addresses::hash("client.dll:48895C2410574883EC4080B98812000000"),
+		::protection::addresses::address_type::pattern,
+		"client.dll:48895C2410574883EC4080B98812000000");
+
+	const ::protection::addresses::address_t& planted_c4_expected_damage = ADDRESS_IMPL(
+		::protection::addresses::hash("client.dll:48895C240848897424185557415441564157488D6C24C04881EC400100004D8BF1498BF0488BDA4C8BF9"),
+		::protection::addresses::address_type::pattern,
+		"client.dll:48895C240848897424185557415441564157488D6C24C04881EC400100004D8BF1498BF0488BDA4C8BF9");
+
 	const ::protection::addresses::address_t& post_network_data_received = ADDRESS_IMPL(
 		::protection::addresses::hash("client.dll:48895C241048894C24085556574154415541564157488DAC24B0FCFFFF4881EC500400004C8BE9488B0D????????488B01FF90B8000000488BC8488B10FF5238498BCD8945848BF0E8????????498BCDE8????????"),
 		::protection::addresses::address_type::pattern,

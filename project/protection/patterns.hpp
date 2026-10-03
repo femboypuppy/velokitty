@@ -89,6 +89,8 @@ namespace patterns {
 	extern const ::protection::addresses::address_t& particle_set_entity_binding;
 	extern const ::protection::addresses::address_t& particle_set_transform;
 	extern const ::protection::addresses::address_t& planted_c4;
+	extern const ::protection::addresses::address_t& planted_c4_affects_local;
+	extern const ::protection::addresses::address_t& planted_c4_expected_damage;
 	extern const ::protection::addresses::address_t& post_network_data_received;
 	extern const ::protection::addresses::address_t& prediction_finish_move;
 	extern const ::protection::addresses::address_t& prediction_player;

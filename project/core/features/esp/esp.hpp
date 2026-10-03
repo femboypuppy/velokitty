@@ -439,9 +439,16 @@ namespace features::esp {
 		public:
 			void on_render( xdraw::draw_list& draw_list );
 
+			/// Game thread: asks the game for the planted bomb's expected damage, for add_bomb to draw.
+			void on_frame_stage_notify( );
+
 		private:
 			void add_bomb( xdraw::draw_list& draw_list );
 			void add_spectators( xdraw::draw_list& draw_list );
+
+			/// The game's own expected damage to the viewed player, or -1 when it has none (a map without
+			/// baked bomb data, or the call is missing), in which case add_bomb falls back to the old formula.
+			std::atomic<int> m_bomb_damage{ -1 };
 		};
 
 	} // namespace other
