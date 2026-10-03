@@ -1274,14 +1274,22 @@ namespace features::combat {
 		}
 
 		const auto jump_scout = features::combat::g_misc.jumpscout( ).active_this_tick( );
-		if ( !settings::g_combat.m_autostop.enabled.value && !jump_scout )
+
+		// The legit triggerbot's own auto stop. It has its own toggle (trigger auto stop, per weapon group), so
+		// it brakes even with the ragebot's auto stop off. On the pass before the legitbot this is last tick's
+		// request, the same one-tick lookahead the ragebot gets.
+		const auto legit_stop = features::combat::g_legit.wants_stop( );
+		const auto rage_stop = settings::g_combat.m_autostop.enabled.value
+			&& ( features::combat::g_rage.should_stop( ) || features::combat::g_rage.has_target( ) );
+
+		if ( !rage_stop && !legit_stop && !jump_scout )
 		{
 			return;
 		}
 
 		// A target the ragebot wants to stop for, or any target at all -- stopping never delays a shot that is
 		// already accurate, and it is what makes the next one accurate.
-		if ( !features::combat::g_rage.should_stop( ) && !features::combat::g_rage.has_target( ) )
+		if ( !features::combat::g_rage.should_stop( ) && !features::combat::g_rage.has_target( ) && !legit_stop )
 		{
 			return;
 		}
@@ -1336,6 +1344,12 @@ namespace features::combat {
 
 		if ( speed <= 1.0f )
 		{
+			// Already stopped. The triggerbot keeps it that way while it is on target; otherwise held movement
+			// keys would step off again on the very next tick and the stop would stutter.
+			if ( legit_stop && !rage_stop )
+			{
+				this->apply_brake( cmd, base, 0.0f, 0.0f, 0.0f );
+			}
 			return;
 		}
 
@@ -1370,7 +1384,8 @@ namespace features::combat {
 
 		// Scaling the analog input with the remaining speed brakes gently near the end; holding
 		// full deflection instead trades a little overshoot for a faster stop.
-		const auto move_magnitude = settings::g_combat.m_autostop.aggressive.value
+		// The triggerbot's stop always uses the eased one: a counter-strafe that lets go as the speed runs out.
+		const auto move_magnitude = settings::g_combat.m_autostop.aggressive.value && rage_stop
 			? 1.0f
 			: std::clamp( speed / ctx.weapon_max_speed, 0.0f, 1.0f );
 

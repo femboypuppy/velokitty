@@ -70,6 +70,7 @@ namespace features::combat {
 		// Disarmed up front; only a tick whose scan still finds the target re-arms it. Every early return
 		// below therefore stops the per-frame aim as well.
 		this->m_track.active = false;
+		this->m_wants_stop = false;
 
 		if ( !settings::g_combat.m_legitbot.enabled.value )
 		{
@@ -815,6 +816,9 @@ namespace features::combat {
 
 			cmd->buttons.value |= cstypes::command_buttons::in_attack;
 			cmd->buttons.value_changed |= cstypes::command_buttons::in_attack;
+
+			// Stay stopped for the length of the click, so the shot that just went out isn't followed by a step.
+			this->m_wants_stop = config.trigger_autostop.value;
 			return;
 		}
 
@@ -1073,6 +1077,10 @@ namespace features::combat {
 			return;
 		}
 
+		// From the first tick on target, so the stop runs alongside the reaction delay rather than after it.
+		// Auto stop's second pass (after the legitbot) brakes on this same command.
+		this->m_wants_stop = config.trigger_autostop.value;
+
 		// The delay runs from the first tick the crosshair is on this player and is not restarted by anything
 		// below: a hit chance that dips mid-delay holds the shot, it doesn't send the wait back to zero. Seed mode
 		// used to skip the delay entirely.
@@ -1095,6 +1103,19 @@ namespace features::combat {
 		if ( ( ctx.current_time - this->m_trigger_delay_start ) * 1000.0f < this->m_trigger_delay_ms )
 		{
 			return;
+		}
+
+		// Hold the shot until the stop has brought the speed into the accurate range: a third of the weapon's
+		// max speed, the same line the game draws between standing and moving accuracy. Only on the ground --
+		// in the air there is nothing to stop against, and waiting would just never fire.
+		if ( config.trigger_autostop.value )
+		{
+			const auto& prestate = systems::g_prediction.pre( );
+			const auto on_ground = ( prestate.flags & cstypes::entity_flags::on_ground ) != 0;
+			if ( on_ground && ctx.weapon_max_speed > 0.0f && prestate.networked_velocity.length_2d( ) > ctx.weapon_max_speed * 0.34f )
+			{
+				return;
+			}
 		}
 
 		if ( !seed_mode )

@@ -198,6 +198,9 @@ namespace settings {
 				config::val<int> trigger_hitchance{ 80 };
 				xui::setting trigger_head_only{ false, {}, "trigger head only", "legitbot" };
 				xui::setting give_me_your_seed{ false, {}, "trigger seed mode", "legitbot" };
+				/// Counter-strafes to a stop while the crosshair is on a target and holds the shot until the speed
+				/// is down to the accurate range, so the triggerbot fires stopped instead of mid-strafe.
+				xui::setting trigger_autostop{ false, {}, "trigger auto stop", "legitbot" };
 
 				xui::setting autowall{ true, {}, "autowall", "legitbot" };
 				// 1, not 101. This is only consulted on the penetrating path, so a default of 101
@@ -224,6 +227,7 @@ namespace settings {
 					this->triggerbot.category = s;
 					this->trigger_head_only.category = s;
 					this->give_me_your_seed.category = s;
+					this->trigger_autostop.category = s;
 					this->autowall.category = s;
 					this->aim_through_smoke.category = s;
 					this->visualize_fov.category = s;

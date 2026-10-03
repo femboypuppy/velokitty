@@ -93,6 +93,7 @@ namespace rendering {
 			xui::slider_int( "delay", delay.value, delay_min, delay_max, "%dms" );
 			xui::slider_int( "hit chance##trig", wg.trigger_hitchance, 0, 100, "%d%%" );
 			xui::checkbox( "head only", wg.trigger_head_only );
+			xui::checkbox( "auto stop##trig", wg.trigger_autostop );
 			xui::checkbox( "seed mode", wg.give_me_your_seed );
 
 			xui::end_child( );

@@ -777,6 +777,9 @@ namespace features::combat {
 
 		[[nodiscard]] bool has_target( ) const noexcept { return this->m_target.has_target( ); }
 
+		/// The triggerbot has someone under the crosshair and trigger auto stop is on; auto stop brakes for it.
+		[[nodiscard]] bool wants_stop( ) const noexcept { return this->m_wants_stop; }
+
 	private:
 		struct scan_point
 		{
@@ -902,6 +905,7 @@ namespace features::combat {
 		float m_trigger_delay_ms{};
 		float m_trigger_release_time{};
 		std::uintptr_t m_trigger_pending_pawn{};
+		bool m_wants_stop{};
 	};
 
 } // namespace features::combat
