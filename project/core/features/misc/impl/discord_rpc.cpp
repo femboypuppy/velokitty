@@ -1,5 +1,7 @@
 #include <pch/pch.hpp>
 #include <utilities/logging/logging.hpp>
+#include <utilities/memory/memory.hpp>
+#include <utilities/addresses/addresses.hpp>
 #include <core/settings.hpp>
 #include <core/systems/systems.hpp>
 #include <core/rendering/rendering.hpp>
@@ -33,6 +35,35 @@ namespace features::misc {
 				}
 			}
 			return out;
+		}
+
+		/// The map name normally comes from the level-init hook, which never fires if the cheat is injected
+		/// mid-match. The engine's global vars keep the current map as a C string (0x180 is the path, 0x188
+		/// the short name in current builds); both are tried and only a plausible map name is accepted, so a
+		/// moved field reads as "no map" instead of garbage.
+		[[nodiscard]] std::string map_from_global_vars () {
+			const auto global_vars = memory::safe_read<std::uintptr_t> (addresses::globals::global_vars);
+			if (!global_vars || !*global_vars)
+				return {};
+
+			for (const auto offset : { 0x188, 0x180 }) {
+				const auto ptr = memory::safe_read<std::uintptr_t> (*global_vars + offset);
+				if (!ptr || *ptr < 0x10000)
+					continue;
+
+				auto name = memory::read_string (*ptr, 128);
+				if (const auto slash = name.find_last_of ('/'); slash != std::string::npos)
+					name.erase (0, slash + 1);
+				if (const auto dot = name.find ('.'); dot != std::string::npos)
+					name.erase (dot);
+
+				const auto valid = name.size () >= 3 && name != "<empty>" && std::ranges::all_of (name, [] (char c) {
+					return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+				});
+				if (valid)
+					return name;
+			}
+			return {};
 		}
 
 		class pipe {
@@ -145,12 +176,14 @@ namespace features::misc {
 
 		// Map name and team are game-thread state; the worker only ever sees these copies.
 		const auto local = systems::g_local.get ();
+		if (local.controller && rendering::g_widgets.s_map_name.empty ())
+			rendering::g_widgets.s_map_name = map_from_global_vars ();
 		const auto& map = rendering::g_widgets.s_map_name;
 
 		std::string details {};
 		std::string state {};
-		if (local.controller && !map.empty ()) {
-			details = "playing " + map;
+		if (local.controller) {
+			details = map.empty () ? "in a match" : "playing " + map;
 			state = local.team == 3 ? "counter-terrorist" : local.team == 2 ? "terrorist" : "spectating";
 		} else {
 			details = "in the main menu";

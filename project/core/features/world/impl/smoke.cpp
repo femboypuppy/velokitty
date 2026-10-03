@@ -58,13 +58,16 @@ namespace features::world {
 
 	void smoke::on_map( std::uintptr_t token, std::size_t size, std::uintptr_t buf_ptr )
 	{
-		if ( size != 2480 || !token || !buf_ptr )
+		// 2480 before the October 2026 update, 2496 after. The per-smoke arrays did not move; only the
+		// trailer grew, and the cloud count always sits 16 bytes before the end.
+		if ( ( size != 2480 && size != 2496 ) || !token || !buf_ptr )
 		{
 			return;
 		}
 
 		this->m_token = token;
 		this->m_buf = buf_ptr;
+		this->m_size = size;
 	}
 
 	void smoke::on_unmap( std::uintptr_t token )
@@ -75,7 +78,7 @@ namespace features::world {
 			return;
 		}
 
-		const auto count = *reinterpret_cast< std::uint32_t* >( buf + 2464 );
+		const auto count = *reinterpret_cast< std::uint32_t* >( buf + this->m_size - 16 );
 
 		// One dump of the first cloud's slot in every per-smoke array of this buffer, so the next log shows which
 		// array the opacity and the colour really live in.
@@ -98,14 +101,31 @@ namespace features::world {
 		const auto& scene = settings::g_world.m_scene;
 		const auto opacity_scale = settings::g_misc.m_removals.smoke.value
 			? 0.0f
-			: scene.smoke_color.value ? static_cast< float >( scene.smoke_color_value.value.a ) / 255.0f : 1.0f;
+			: std::clamp( scene.smoke_opacity.value / 100.0f, 0.0f, 1.0f );
 
-		if ( opacity_scale < 1.0f && count > 0 && count <= 16 )
+		if ( count > 0 && count <= 16 )
 		{
 			for ( auto i = 0u; i < count; ++i )
 			{
-				auto opacity = reinterpret_cast< float* >( buf + 1280 + 16 * static_cast< std::size_t >( i ) );
-				opacity[ 0 ] *= opacity_scale;
+				const auto slot = 16 * static_cast< std::size_t >( i );
+
+				if ( opacity_scale < 1.0f )
+				{
+					auto opacity = reinterpret_cast< float* >( buf + 1280 + slot );
+					opacity[ 0 ] *= opacity_scale;
+				}
+
+				// The game fills this slot from the cloud's own colour every frame, so its current value tells
+				// us the scale: anything above 1.5 can only be 0-255.
+				if ( scene.smoke_color.value )
+				{
+					const auto& c = scene.smoke_color_value.value;
+					auto color = reinterpret_cast< float* >( buf + 512 + slot );
+					const auto scale = std::max( { color[ 0 ], color[ 1 ], color[ 2 ] } ) > 1.5f ? 1.0f : 1.0f / 255.0f;
+					color[ 0 ] = c.r * scale;
+					color[ 1 ] = c.g * scale;
+					color[ 2 ] = c.b * scale;
+				}
 			}
 		}
 

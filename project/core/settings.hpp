@@ -1637,9 +1637,12 @@ namespace settings {
 			config::col ambient_color{ { 233, 145, 255, 255 }, "scene", "ambient color" };
 			config::val<float> ambient_intensity{ 1.1f, "scene", "ambient intensity" };
 
-			/// Tints smoke grenade clouds; the colour's alpha is the cloud's opacity (255 = untouched).
+			/// Tints smoke grenade clouds.
 			xui::setting smoke_color{ false, {}, "smoke color", "scene" };
 			config::col smoke_color_value{ { 170, 190, 255, 255 }, "scene", "smoke color value" };
+
+			/// Cloud opacity in percent, independent of the tint (100 = untouched).
+			config::val<float> smoke_opacity{ 100.0f, "scene", "smoke opacity" };
 		} m_scene{};
 	};
 

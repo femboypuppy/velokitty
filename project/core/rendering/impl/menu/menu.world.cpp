@@ -61,10 +61,11 @@ namespace rendering {
 				xui::checkbox( "smoke color", w.m_scene.smoke_color );
 				if ( xui::begin_popup( "##smokecolor_popup", 220.0f ) )
 				{
-					// Alpha is the cloud's opacity.
 					xui::color_picker( "color##smoke", w.m_scene.smoke_color_value );
 					xui::end_popup( );
 				}
+
+				xui::slider_float( "smoke opacity", w.m_scene.smoke_opacity, 0.0f, 100.0f, "%.0f%%" );
 
 				xui::end_child( );
 			}

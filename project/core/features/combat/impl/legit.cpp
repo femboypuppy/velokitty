@@ -182,17 +182,15 @@ namespace features::combat {
 			this->m_diag_steered = 0;
 		}
 
-		if ( !g_shared.can_shoot( cmd, local.controller ) )
-		{
-			return;
-		}
-
-		if ( config.triggerbot.value )
+		if ( config.triggerbot.value && g_shared.can_shoot( cmd, local.controller ) )
 		{
 			this->apply_triggerbot( cmd, shoot_position, view_angles, aim_punch, rcs_scale, config, local );
 		}
 
-		// Last, so a press the triggerbot just added is compensated like the player's own.
+		// Last, so a press the triggerbot just added is compensated like the player's own. Not behind the
+		// can_shoot gate: that compares the command's client tick with the next-attack tick, and the client
+		// tick can trail the tick the server fires on, so mid-spray the correction kept landing on the
+		// command after the bullet instead of the one carrying it. Every held-attack command is compensated.
 		this->apply_recoil_control( cmd, rcs_scale, local );
 	}
 

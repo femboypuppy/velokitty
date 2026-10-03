@@ -102,6 +102,7 @@ namespace features::world {
         static inline bool m_active{};
         static inline std::uintptr_t m_buf{};
         static inline std::uintptr_t m_token{};
+        static inline std::size_t m_size{};
     };
 
 } // namespace features::world

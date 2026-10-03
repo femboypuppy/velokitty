@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>aimwhere</AssemblyName>
+    <RootNamespace>aimwhere</RootNamespace>
+    <ApplicationIcon>assets\aimwhere.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Nullable>disable</Nullable>
+    <DebugType>none</DebugType>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Product>aimwhere</Product>
+    <AssemblyTitle>aimwhere loader</AssemblyTitle>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Net.Http" />
+    <EmbeddedResource Include="assets\banner.png" LogicalName="banner.png" />
+    <EmbeddedResource Include="assets\aimwhere.ico" LogicalName="aimwhere.ico" />
+  </ItemGroup>
+
+</Project>
