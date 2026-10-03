@@ -16,6 +16,11 @@
     <RootNamespace>velocitycs2</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
+  <!-- The release version, from the VERSION file the release workflow tags with; shown in the menu. -->
+  <PropertyGroup>
+    <AimwhereVersion Condition="Exists('$(MSBuildProjectDirectory)\VERSION')">$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)\VERSION').Trim())</AimwhereVersion>
+    <AimwhereVersion Condition="'$(AimwhereVersion)'==''">dev</AimwhereVersion>
+  </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Development|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
@@ -76,7 +81,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>VELOCITYCS2_EXPORTS;_WINDOWS;_USRDLL;DEV;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>VELOCITYCS2_EXPORTS;_WINDOWS;_USRDLL;DEV;AIMWHERE_VERSION=$(AimwhereVersion);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -110,7 +115,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;VELOCITYCS2_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;VELOCITYCS2_EXPORTS;_WINDOWS;_USRDLL;AIMWHERE_VERSION=$(AimwhereVersion);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <PrecompiledHeader>Use</PrecompiledHeader>

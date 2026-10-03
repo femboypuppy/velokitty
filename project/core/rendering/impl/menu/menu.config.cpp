@@ -462,6 +462,20 @@ namespace rendering {
 			unload::request( );
 		}
 
+		// Which build is running, under the button. Comes from the VERSION file at build time (the project file
+		// passes it in), so it changes with every release without anyone editing it here.
+#define AIMWHERE_STR2( x ) #x
+#define AIMWHERE_STR( x ) AIMWHERE_STR2( x )
+#if defined( AIMWHERE_VERSION )
+		constexpr auto version_label{ "aimwhere v" AIMWHERE_STR( AIMWHERE_VERSION ) };
+#else
+		constexpr auto version_label{ "aimwhere vdev" };
+#endif
+#undef AIMWHERE_STR
+#undef AIMWHERE_STR2
+		const auto [ vw, vh ] = xdraw::measure_text( version_label );
+		dl.text( std::floor( btn.x + ( btn.w - vw ) * 0.5f ), std::floor( btn.y + btn.h + 12.0f ), version_label, tokens::col_text_dim );
+
 		xui::end_child( );
 	}
 } // namespace rendering
