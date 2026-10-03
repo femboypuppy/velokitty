@@ -120,4 +120,17 @@ namespace steam {
 		memory::call<bool>( MODULE_EXPORT( "steam_api64.dll:SteamAPI_ISteamNetworkingMessages_CloseChannelWithUser" ), detail::networking_interface, &identity, channel );
 	}
 
+	int networking::session_state( std::uint64_t steam_id )
+	{
+		if ( !detail::networking_interface )
+		{
+			return 0;
+		}
+
+		// Both out-structs are optional; only the returned state is wanted.
+		const auto identity = detail::make_identity( steam_id );
+		return memory::call<int>( MODULE_EXPORT( "steam_api64.dll:SteamAPI_ISteamNetworkingMessages_GetSessionConnectionInfo" ),
+			detail::networking_interface, &identity, static_cast< void* >( nullptr ), static_cast< void* >( nullptr ) );
+	}
+
 } // namespace steam

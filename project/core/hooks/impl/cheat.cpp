@@ -331,6 +331,7 @@ namespace hooks {
 		diag::set_exception_phase( "frame_stage_notify: scoreboard and kill feed" );
 		diag::guard( "frame_stage_notify: scoreboard", [ ] { features::misc::g_scoreboard_weapons.on_frame_stage_notify( ); } );
 		diag::guard( "frame_stage_notify: aimwhere users", [ ] { features::misc::g_aimwhere_users.on_frame_stage_notify( ); } );
+		diag::guard( "frame_stage_notify: discord", [ ] { features::misc::g_discord_rpc.on_frame_stage_notify( ); } );
 		diag::guard( "frame_stage_notify: kill feed", [ ] { features::misc::g_other.do_kill_feed_preservation( ); } );
 	}
 	void __fastcall cheat::create_move( std::uintptr_t thisptr, int slot, bool active )

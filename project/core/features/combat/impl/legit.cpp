@@ -174,6 +174,14 @@ namespace features::combat {
 			this->reset_engagement( );
 		}
 
+		// About once a second while the key is held: did the scan find anyone, did it arm, did the frames steer.
+		if ( config.aimbot.value && this->m_diag_ticks++ % 64 == 0 )
+		{
+			logging::console::print( xs( "[legit] aim held: target={} hc={:.2f} armed={} steered_frames={}\n" ),
+				this->m_target.has_target( ), this->m_target.hitchance, this->m_track.active, this->m_diag_steered );
+			this->m_diag_steered = 0;
+		}
+
 		if ( !g_shared.can_shoot( cmd, local.controller ) )
 		{
 			return;
@@ -337,6 +345,7 @@ namespace features::combat {
 
 			if ( !best.has_target( ) || score > best.score )
 			{
+				best.controller = p.ptr;
 				best.pawn = pawn;
 				best.aim_angle = aim;
 				best.hitchance = 1.0f;
@@ -629,6 +638,7 @@ namespace features::combat {
 			t.has_prev = false;
 		}
 
+		t.controller = tgt.controller;
 		t.pawn = tgt.pawn;
 		t.bone_index = point.bone_index;
 		t.has_hitbox = point.hitbox.index >= 0;
@@ -672,7 +682,19 @@ namespace features::combat {
 		}
 
 		const auto local = systems::g_local.get( );
-		if ( !local.is_alive || !local.pawn || !systems::g_entities.exists( t.pawn ) )
+		if ( !local.is_alive || !local.pawn )
+		{
+			disarm( );
+			return;
+		}
+
+		// The cache only holds controllers -- checking the pawn against it failed every frame and the aim
+		// never moved. A controller still cached, still alive and still owning this pawn means the target
+		// is the one the last scan vetted.
+		const auto target_alive = systems::g_entities.exists( t.controller )
+			&& memory::safe_read<bool>( t.controller + SCHEMA( "CCSPlayerController", "m_bPawnIsAlive"_hash ) ).value_or( false )
+			&& systems::g_entities.lookup( memory::safe_read<std::uint32_t>( t.controller + SCHEMA( "CBasePlayerController", "m_hPawn"_hash ) ).value_or( 0 ) ) == t.pawn;
+		if ( !target_alive )
 		{
 			disarm( );
 			return;
@@ -776,6 +798,7 @@ namespace features::combat {
 
 		va_pitch = std::clamp( va_pitch + step_x, -89.0f, 89.0f );
 		va_yaw += step_y;
+		++this->m_diag_steered;
 	}
 
 	void legit::apply_triggerbot( systems::input::usercmd* cmd, const math::vector3& shoot_position, const math::vector3& view_angles, const math::vector3& aim_punch, float rcs_scale, const settings::combat::legitbot::weapon_group& config, const systems::local::snapshot& local )

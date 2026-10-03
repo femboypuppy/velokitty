@@ -62,6 +62,7 @@ namespace features {
 		inline other g_other{};
 		inline scoreboard_weapons g_scoreboard_weapons{};
 		inline aimwhere_users g_aimwhere_users{};
+		inline discord_rpc g_discord_rpc{};
 
 	} // namespace misc
 

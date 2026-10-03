@@ -953,7 +953,7 @@ namespace features::esp::player {
 			std::ranges::transform( info.name, info.name.begin( ), [ ]( unsigned char c ) { return std::tolower( c ); } );
 		}
 
-		info.aimwhere_user = features::misc::g_aimwhere_users.is_user( memory::read<std::uint64_t>( info.controller + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ) );
+		info.aimwhere_user = features::misc::g_aimwhere_users.is_user( memory::safe_read<std::uint64_t>( info.controller + SCHEMA( "CBasePlayerController", "m_steamID"_hash ) ).value_or( 0 ) );
 
 		const auto money_services = memory::read<std::uintptr_t>( info.controller + SCHEMA( "CCSPlayerController", "m_pInGameMoneyServices"_hash ) );
 		if ( money_services )

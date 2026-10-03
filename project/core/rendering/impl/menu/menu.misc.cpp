@@ -161,7 +161,7 @@ namespace rendering {
 					xui::end_popup( );
 				}
 
-				xui::checkbox( "aimwhere badges", m.m_aimwhere_users.enabled );
+				xui::checkbox( "discord rich presence", m.m_discord_rpc.enabled );
 
 				xui::checkbox ("scoreboard weapons", m.m_scoreboard_weapons.enabled);
 				if (xui::begin_popup ("##scoreboardeq_popup", 220.0f)) {

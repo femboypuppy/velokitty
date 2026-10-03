@@ -612,21 +612,37 @@ found_type_descriptor:
 		return *reinterpret_cast<std::uintptr_t*>(vtable + index * sizeof (std::uintptr_t));
 	}
 
+	namespace {
+		// Copies up to `cap` bytes from `address` into `dst`, stopping at a NUL, and returns the length. The
+		// scan is wrapped in SEH so a stale or unmapped pointer -- a player name whose entity was just freed,
+		// say -- returns whatever was copied instead of faulting the game. SEH cannot live in a function that
+		// also owns a C++ object with a destructor (the std::string), so the copy is isolated here and the
+		// string is built by the caller afterwards.
+		std::size_t copy_cstr_guarded (std::uintptr_t address, char* dst, std::size_t cap) {
+			std::size_t len {0};
+			__try {
+				const auto src = reinterpret_cast<const char*>(address);
+				for (; len < cap && src [len] != '\0'; ++len) {
+					dst [len] = src [len];
+				}
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER) {
+				// Partial copy up to the fault; len holds how far we got.
+			}
+			return len;
+		}
+	}
+
 	std::string read_string (std::uintptr_t address, std::size_t max_length) {
 		if (!address) {
 			return {};
 		}
 
-		auto str_ptr = reinterpret_cast<const char*>(address);
+		char buffer [1024];
+		const auto cap = std::min (max_length, sizeof (buffer) - 1);
+		const auto len = copy_cstr_guarded (address, buffer, cap);
 
-		auto len {0ull};
-		for (; len < max_length && str_ptr [len] != '\0'; ++len);
-
-		if (len == 0) {
-			return {};
-		}
-
-		return std::string (str_ptr, len);
+		return len ? std::string (buffer, len) : std::string {};
 	}
 
 } // namespace memory

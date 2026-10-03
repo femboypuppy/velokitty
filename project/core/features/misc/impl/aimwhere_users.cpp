@@ -11,57 +11,39 @@ namespace features::misc {
 
 	namespace {
 
-		/// 'AWHR'. Any channel number works as long as nothing else in the process reads it; the game's
-		/// own peer-to-peer traffic goes through its private copy of the networking library anyway.
-		constexpr int k_channel { 0x41574852 };
-
-		constexpr std::array<char, 8> k_magic { 'A', 'I', 'M', 'W', 'H', 'E', 'R', 'E' };
-		constexpr std::uint8_t k_version { 1 };
-		constexpr std::uint8_t k_hello { 0 };
-		constexpr std::uint8_t k_ack { 1 };
-
-		struct packet {
-			std::array<char, 8> magic { k_magic };
-			std::uint8_t version { k_version };
-			std::uint8_t kind {};
-		};
-		static_assert(sizeof (packet) == 10);
-
 		constexpr std::uint64_t k_steam_id_base { 76561197960265728ull };
 
-		/// A user who goes this long without a word stops counting -- they unloaded, or left.
-		constexpr auto k_forget_after = std::chrono::seconds (35);
+		/// Steam ID + name for each human in the server; bots carry no Steam ID.
+		struct player_row {
+			std::uint64_t steam_id {};
+			std::string name {};
+		};
 
-		/// Hellos to known users keep them from being forgotten. Players who have never answered are asked
-		/// less and less often: a stock client drops every one, and anyone who injects later says hello
-		/// themselves, which is answered straight away.
-		[[nodiscard]] std::chrono::seconds hello_interval (bool known, int hellos) {
-			if (known)
-				return std::chrono::seconds (10);
-			if (hellos < 3)
-				return std::chrono::seconds (10);
-			if (hellos < 10)
-				return std::chrono::seconds (30);
-			return std::chrono::seconds (60);
-		}
-
-		/// Steam IDs of the humans currently in the server; bots carry no Steam ID.
-		[[nodiscard]] std::vector<std::uint64_t> match_players () {
-			std::vector<std::uint64_t> out {};
+		[[nodiscard]] std::vector<player_row> match_players () {
+			std::vector<player_row> out {};
 			for (const auto& player : systems::g_entities.get_by_type (systems::entities::type::player)) {
 				if (!player.ptr)
 					continue;
 
 				const auto id = memory::safe_read<std::uint64_t> (
 					player.ptr + SCHEMA ("CBasePlayerController", "m_steamID"_hash)).value_or (0);
-				if (id >= k_steam_id_base)
-					out.push_back (id);
+				if (id < k_steam_id_base)
+					continue;
+
+				const auto name_ptr = memory::safe_read<std::uintptr_t> (
+					player.ptr + SCHEMA ("CCSPlayerController", "m_sSanitizedPlayerName"_hash)).value_or (0);
+				out.push_back ({ id, name_ptr ? memory::read_string (name_ptr, 127) : std::string {} });
 			}
 			return out;
 		}
 
+		// Sent ahead of every update and a no-op when the manager already exists. The HUD's script context can
+		// be reset while the HUD panel itself stays, which wiped a once-injected manager and left every later
+		// update guarded into doing nothing -- the badge showed, then stopped.
 		static constexpr const char* k_badge_script = R"PANORAMA(
 (function () {
+
+	if (typeof SAimwhere !== "undefined") return;
 
 	SAimwhere = (function () {
 
@@ -196,43 +178,53 @@ namespace features::misc {
 	} // namespace
 
 	void aimwhere_users::on_frame_stage_notify () {
-		if (!settings::g_misc.m_aimwhere_users.enabled.value) {
-			if (m_networking_ready) {
-				// Turning the setting off makes us unfindable too: stop answering and drop everyone.
-				shutdown ();
-				m_networking_ready = false;
-			}
-			return;
-		}
-
-		if (!m_networking_ready) {
-			if (m_networking_failed)
-				return;
-
+		if (!m_ready) {
 			m_local_id = steam::user::get_steam_id ();
-			if (!steam::networking::initialize () || m_local_id < k_steam_id_base) {
-				m_networking_failed = true;
-				logging::console::print (xs ("[aimwhere] steam networking unavailable; badges disabled\n"));
+			if (m_local_id < k_steam_id_base)
 				return;
-			}
 
-			m_networking_ready = true;
-			logging::console::print (xs ("[aimwhere] networking ready, local={}\n"), m_local_id.load ());
+			m_ready = true;
 		}
 
 		const auto now = clock::now ();
-
-		if (now >= m_next_pump) {
-			m_next_pump = now + std::chrono::milliseconds (250);
-			pump_messages (now);
-		}
-
-		if (now >= m_next_greet) {
-			m_next_greet = now + std::chrono::seconds (1);
-			greet_players (now);
+		if (now >= m_next_scan) {
+			m_next_scan = now + std::chrono::milliseconds (500);
+			scan_names (now);
 		}
 
 		update_scoreboard ();
+	}
+
+	void aimwhere_users::scan_names (clock::time_point now) {
+		// Passive: read the names the game already hands us and note which ones wear a marker. No send.
+		std::scoped_lock lock (m_mutex);
+		for (const auto& row : match_players ()) {
+			if (row.steam_id == m_local_id) {
+				// Self-test: has the marker we set survived the server's sanitiser on our own name? Only flip
+				// hidden -> visible, and only after a few scans, so a name that has not propagated yet or a
+				// transient empty read never forces the visible marker on when the hidden one would do.
+				if (g_aimwhere_marker_visible || row.name.empty ())
+					continue;
+
+				if (row.name.find (k_aimwhere_marker_hidden) != std::string::npos) {
+					m_self_unmarked = 0;
+				}
+				else if (++m_self_unmarked >= 3) {
+					g_aimwhere_marker_visible = true;
+					logging::console::print (xs ("[aimwhere] hidden marker stripped by the game; using the visible one\n"));
+				}
+				continue;
+			}
+
+			if (aimwhere_name_marked (row.name)) {
+				if (!m_users.contains (row.steam_id))
+					logging::console::print (xs ("[aimwhere] user detected: {}\n"), row.steam_id);
+				m_users [row.steam_id] = now;
+			}
+		}
+
+		// Someone whose name lost the marker (reset, reconnect, left) stops counting after a few seconds.
+		std::erase_if (m_users, [&] (const auto& e) { return now - e.second > std::chrono::seconds (6); });
 	}
 
 	void aimwhere_users::on_level_change () {
@@ -243,32 +235,18 @@ namespace features::misc {
 		m_ui_engine = nullptr;
 		m_script_panel = nullptr;
 
-		// Known users carry over (a map change keeps the same people), but everyone gets greeted again soon
-		// so the new server's players are found without waiting out the backoff.
 		std::scoped_lock lock (m_mutex);
-		m_peers.clear ();
+		m_users.clear ();
 	}
 
 	void aimwhere_users::shutdown () {
-		std::vector<std::uint64_t> ids {};
-		{
-			std::scoped_lock lock (m_mutex);
-			for (const auto& [id, _] : m_users)
-				ids.push_back (id);
-			for (const auto& [id, _] : m_peers)
-				ids.push_back (id);
-			m_users.clear ();
-			m_peers.clear ();
-		}
-
-		for (const auto id : ids)
-			steam::networking::close_channel (id, k_channel);
-
 		m_sent_badges.clear ();
+		std::scoped_lock lock (m_mutex);
+		m_users.clear ();
 	}
 
 	bool aimwhere_users::is_user (std::uint64_t steam_id) const {
-		if (!steam_id || !m_networking_ready || !settings::g_misc.m_aimwhere_users.enabled.value)
+		if (!m_ready || !steam_id)
 			return false;
 
 		if (steam_id == m_local_id)
@@ -276,81 +254,6 @@ namespace features::misc {
 
 		std::scoped_lock lock (m_mutex);
 		return m_users.contains (steam_id);
-	}
-
-	bool aimwhere_users::say (std::uint64_t steam_id, std::uint8_t kind) const {
-		packet p {};
-		p.kind = kind;
-		return steam::networking::send (steam_id, k_channel, &p, sizeof (p));
-	}
-
-	void aimwhere_users::pump_messages (clock::time_point now) {
-		std::vector<steam::networking::message> inbox {};
-		steam::networking::receive (k_channel, inbox);
-
-		for (const auto& msg : inbox) {
-			if (msg.sender < k_steam_id_base || msg.sender == m_local_id || msg.data.size () < sizeof (packet))
-				continue;
-
-			packet p {};
-			std::memcpy (&p, msg.data.data (), sizeof (p));
-			if (p.magic != k_magic || p.version != k_version)
-				continue;
-
-			bool is_new {};
-			{
-				std::scoped_lock lock (m_mutex);
-				is_new = !m_users.contains (msg.sender);
-				m_users [msg.sender] = now;
-			}
-
-			if (is_new)
-				logging::console::print (xs ("[aimwhere] user detected: {}\n"), msg.sender);
-
-			// Answer every hello, so whoever injected last learns about us on their first try.
-			if (p.kind == k_hello)
-				(void)say (msg.sender, k_ack);
-		}
-
-		std::scoped_lock lock (m_mutex);
-		std::erase_if (m_users, [&] (const auto& entry) {
-			const bool stale = now - entry.second > k_forget_after;
-			if (stale)
-				logging::console::print (xs ("[aimwhere] user gone quiet: {}\n"), entry.first);
-			return stale;
-		});
-	}
-
-	void aimwhere_users::greet_players (clock::time_point now) {
-		const auto players = match_players ();
-
-		for (const auto id : players) {
-			if (id == m_local_id)
-				continue;
-
-			// A hello that arrives before we have sent anything waits as a session request; accepting it here
-			// lets the message through on the next pump instead of whenever our own hello goes out.
-			(void)steam::networking::accept (id);
-
-			bool known {};
-			peer state {};
-			{
-				std::scoped_lock lock (m_mutex);
-				known = m_users.contains (id);
-				state = m_peers [id];
-			}
-
-			if (state.hellos > 0 && now - state.last_hello < hello_interval (known, state.hellos))
-				continue;
-
-			// A refused send counts as a try too, or a peer Steam will not route to would be retried every second.
-			(void)say (id, k_hello);
-
-			std::scoped_lock lock (m_mutex);
-			auto& p = m_peers [id];
-			p.last_hello = now;
-			++p.hellos;
-		}
 	}
 
 	void aimwhere_users::update_scoreboard () {
@@ -399,9 +302,9 @@ namespace features::misc {
 			users_json += std::format (R"({{x:"{}",a:"{}"}})", id, id - k_steam_id_base);
 		};
 
-		for (const auto id : match_players ()) {
-			if (is_user (id))
-				add (id);
+		for (const auto& row : match_players ()) {
+			if (is_user (row.steam_id))
+				add (row.steam_id);
 		}
 		users_json += "]";
 
@@ -411,13 +314,19 @@ namespace features::misc {
 
 		// Re-sent every second or so even when nothing changed: a row that was rebuilt while open has lost
 		// its badge, and the script only creates what is missing.
-		if (payload == m_sent_badges && m_scoreboard_frames % 64 != 0)
+		if (payload == m_sent_badges && m_scoreboard_frames % 32 != 0)
 			return;
 
-		const auto script = std::format (
+		// The definition rides along every time (it returns at once when the manager exists), so a reset script
+		// context is rebuilt on the next send instead of silently swallowing every update after it.
+		const auto script = std::string (k_badge_script) + std::format (
 			R"(if(typeof(SAimwhere)!=='undefined'){{SAimwhere.update({},"{}");}})", users_json, accent_hex);
-		if (run_script (script))
-			m_sent_badges = payload;
+		if (!run_script (script))
+			return;
+
+		if (payload != m_sent_badges)
+			logging::console::print (xs ("[aimwhere] scoreboard badges sent: {}\n"), users_json);
+		m_sent_badges = payload;
 	}
 
 	c_ui_panel* aimwhere_users::find_hud_panel () const {

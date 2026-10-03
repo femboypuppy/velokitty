@@ -11,6 +11,14 @@
 namespace features::misc {
 	namespace {
 		constexpr std::ptrdiff_t k_fov_offset{ 0x498 };
+		constexpr std::ptrdiff_t k_origin_offset{ 0x4a0 };
+		constexpr std::ptrdiff_t k_angles_offset{ 0x4b8 };
+
+		// Written at the very end of the game's OverrideView (client.dll 0xB9CD73 in the Oct 2 build):
+		// origin, angles, origin again, copied from the two fields above.
+		constexpr std::ptrdiff_t k_origin_copy_offset{ 0x554 };
+		constexpr std::ptrdiff_t k_angles_copy_offset{ 0x560 };
+		constexpr std::ptrdiff_t k_origin_copy_2_offset{ 0x56c };
 		constexpr std::ptrdiff_t k_aspect_ratio_offset{ 0x4d4 };
 		constexpr std::ptrdiff_t k_view_flags_offset{ 0x551 };
 		constexpr std::uint8_t k_explicit_aspect_ratio_flag{ 1u << 1 };
@@ -137,8 +145,16 @@ namespace features::misc {
 
 		this->m_spec_last_pawn = pawn;
 
-		memory::write<math::vector3>( view_setup + 0x4a0, *origin + offset );
-		memory::write<math::vector3>( view_setup + 0x4b8, this->m_spec_angles );
+		const auto eye = *origin + offset;
+		memory::write<math::vector3>( view_setup + k_origin_offset, eye );
+		memory::write<math::vector3>( view_setup + k_angles_offset, this->m_spec_angles );
+
+		// The game's OverrideView finishes by copying origin and angles into these three, and this hook runs
+		// after it -- so they still held our own eye. Near the target the two views overlap and it hardly shows;
+		// far away the world and everything in it was culled against where we stand, and nothing drew.
+		memory::write<math::vector3>( view_setup + k_origin_copy_offset, eye );
+		memory::write<math::vector3>( view_setup + k_angles_copy_offset, this->m_spec_angles );
+		memory::write<math::vector3>( view_setup + k_origin_copy_2_offset, eye );
 	}
 
 	bool camera::hides_entity( std::uintptr_t entity, std::uint32_t schema_hash ) const

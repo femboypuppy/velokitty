@@ -1282,11 +1282,10 @@ namespace settings {
 			config::col color{ { 255, 255, 0, 255 }, "misc", "scoreboard weapons color" };
 		} m_scoreboard_weapons{};
 
-		/// Detecting other aimwhere users (and being detectable) over Steam peer-to-peer messages.
-		struct aimwhere_users
+		struct discord_rpc
 		{
-			xui::setting enabled{ true, {}, "aimwhere badges", "misc" };
-		} m_aimwhere_users{};
+			xui::setting enabled{ true, {}, "discord rich presence", "misc" };
+		} m_discord_rpc{};
 
 		struct name_changer
 		{

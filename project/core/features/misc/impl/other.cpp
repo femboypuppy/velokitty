@@ -366,7 +366,11 @@ namespace features::misc {
 	{
 		const auto local = systems::g_local.get( );
 		const auto& cfg = settings::g_misc.m_name_changer;
-		const auto enabled = cfg.clantag.value || cfg.override_name.value;
+
+		// The aimwhere badge marker rides on the name, so the name changer now always runs: even with the clan
+		// tag and override both off, it re-submits your real name with the marker appended. That is the whole
+		// detection channel -- other users read it off your name, nothing is sent anywhere.
+		const auto enabled = true;
 
 		if ( !enabled )
 		{
@@ -423,6 +427,42 @@ namespace features::misc {
 				display_name += ' ';
 				display_name += base_name;
 			}
+		}
+
+		// The aimwhere marker goes last, after the name and any clan tag. Strip either marker first so a
+		// hidden -> visible flip replaces rather than stacks, then append whichever the self-test settled on.
+		{
+			const auto erase_all = [ &display_name ]( const char* m )
+			{
+				const std::string needle{ m };
+				for ( auto pos = display_name.find( needle ); pos != std::string::npos; pos = display_name.find( needle ) )
+				{
+					display_name.erase( pos, needle.size( ) );
+				}
+			};
+			erase_all( k_aimwhere_marker_hidden );
+			erase_all( k_aimwhere_marker_visible );
+
+			const std::string marker{ g_aimwhere_marker_visible.load( ) ? k_aimwhere_marker_visible : k_aimwhere_marker_hidden };
+
+			// CS2 caps the networked name, so if the base already crowds it out, trim the base rather than drop
+			// the marker -- the suffix is what makes the badge work. Keep headroom under the game's ~32 bytes.
+			constexpr std::size_t k_name_budget{ 30 };
+			if ( display_name.size( ) + marker.size( ) > k_name_budget && display_name.size( ) > marker.size( ) )
+			{
+				auto cut = k_name_budget - marker.size( );
+
+				// Never cut inside a UTF-8 character, or a name like the CJK one would come out corrupt. The
+				// continuation bytes of a character are 0b10xxxxxx; walk back off them to the lead byte.
+				while ( cut > 0 && ( static_cast<unsigned char>( display_name[ cut ] ) & 0xC0 ) == 0x80 )
+				{
+					--cut;
+				}
+
+				display_name.resize( cut );
+			}
+
+			display_name += marker;
 		}
 
 		if ( display_name == this->m_last_sent_name )

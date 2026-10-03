@@ -498,49 +498,95 @@ namespace features::misc {
 		c_ui_panel* m_script_panel {};
 	};
 
-	/// Finds the other aimwhere users in the match and badges them, without a server of our own.
+	/// Discord Rich Presence over Discord's local IPC pipe (\\.\pipe\discord-ipc-N), no SDK.
 	///
-	/// Every copy says hello to each human in the server over Steam's peer-to-peer messages
-	/// (steam::networking) on a channel only aimwhere listens on. Another copy answers; a stock client
-	/// never accepts the session, so the hello goes nowhere. Anyone heard from recently counts as a
-	/// user: they get the mark beside their ESP name and a badge in their scoreboard row.
-	class aimwhere_users {
+	/// The game thread only publishes what to show; a worker thread owns the pipe, so a missing or restarting
+	/// Discord never costs the game a frame. Discord allows five activity updates per 20 seconds, so the
+	/// worker sends only when the text changes and never more than once every five seconds.
+	class discord_rpc {
 	public:
-		/// Game thread: networking, and the scoreboard badges while TAB is held.
+		/// Game thread, every frame; it rebuilds the text about once a second.
 		void on_frame_stage_notify ();
-		void on_level_change ();
 
-		/// Closes the channel with everyone we know, so nothing keeps queueing for an unloaded DLL.
+		/// Clears the presence and joins the worker. Must run before unload waits for the module to go idle.
 		void shutdown ();
 
-		/// Any thread. The local player counts once networking is up.
+	private:
+		using clock = std::chrono::steady_clock;
+
+		void run (std::stop_token stop);
+
+		std::mutex m_mutex {};
+		std::string m_details {};
+		std::string m_state {};
+		std::uint64_t m_revision {};
+
+		std::int64_t m_start_unix {};
+		clock::time_point m_next_publish {};
+
+		/// Set by shutdown: unload stops the worker before the hooks come off, and a frame in between must not
+		/// start a new one.
+		std::atomic_bool m_shut_down {};
+		std::condition_variable_any m_wake {};
+		std::jthread m_thread {};
+	};
+
+	/// The detection channel: a client marks its own networked name and finds others by reading the mark off
+	/// theirs. The game broadcasts names to everyone, so nothing is sent anywhere.
+	///
+	/// Two markers. The hidden one is four alternating zero-width codepoints (ZWSP, ZWNJ x2) -- invisible, and
+	/// a sequence a real name never holds. If CS2's name sanitiser keeps zero-width characters, this is what
+	/// is used and no one sees anything. The visible one (U+1D2C U+1D42, a small raised "AW") is the fallback
+	/// for when the sanitiser strips the zero-width run: modifier letters always survive, at the cost of a
+	/// faint mark on the name. do_name_changing self-tests by reading its own name back and picks.
+	inline constexpr const char* k_aimwhere_marker_hidden = "\xE2\x80\x8B\xE2\x80\x8C\xE2\x80\x8B\xE2\x80\x8C";
+	inline constexpr const char* k_aimwhere_marker_visible = "\xE1\xB4\xAC\xE1\xB5\x82";
+
+	/// Set once the self-test finds the hidden marker did not survive; the name changer then wears the visible
+	/// one instead. Shared because the name is built in one place and the badge detection reads it in another.
+	inline std::atomic_bool g_aimwhere_marker_visible { false };
+
+	[[nodiscard]] inline bool aimwhere_name_marked( std::string_view name )
+	{
+		return name.find( k_aimwhere_marker_hidden ) != std::string_view::npos
+			|| name.find( k_aimwhere_marker_visible ) != std::string_view::npos;
+	}
+
+	/// Badges other aimwhere users -- and yourself -- on the scoreboard and ESP, with no server of our own.
+	///
+	/// Detection is entirely passive: it reads the player names the game already broadcasts and marks anyone
+	/// whose name carries k_aimwhere_name_marker. The marker is put on the local name by the name changer.
+	class aimwhere_users {
+	public:
+		/// Game thread: scan names for the marker, and draw the scoreboard badges while TAB is held.
+		void on_frame_stage_notify ();
+		void on_level_change ();
+		void shutdown ();
+
+		/// Any thread. True for the local player and for anyone currently wearing the marker.
 		[[nodiscard]] bool is_user (std::uint64_t steam_id) const;
 
 	private:
 		using clock = std::chrono::steady_clock;
 
-		struct peer {
-			clock::time_point last_hello {};
-			int hellos {};
-		};
-
-		void pump_messages (clock::time_point now);
-		void greet_players (clock::time_point now);
+		void scan_names (clock::time_point now);
 		void update_scoreboard ();
-		[[nodiscard]] bool say (std::uint64_t steam_id, std::uint8_t kind) const;
 
 		[[nodiscard]] c_ui_panel* find_hud_panel () const;
 		[[nodiscard]] bool run_script (const std::string& script);
 
+		std::atomic<std::uint64_t> m_local_id {};
+		std::atomic_bool m_ready {};
+
+		/// Steam IDs seen wearing the marker, with when they were last seen; read by is_user off the render
+		/// thread, so guarded. A name that drops the marker (name reset, reconnect) ages out in a few seconds.
 		mutable std::mutex m_mutex {};
 		std::unordered_map<std::uint64_t, clock::time_point> m_users {};
-		std::unordered_map<std::uint64_t, peer> m_peers {};
-		// Both read by is_user from the render thread; m_local_id is stored before m_networking_ready is set.
-		std::atomic<std::uint64_t> m_local_id {};
-		std::atomic_bool m_networking_ready {};
-		bool m_networking_failed {};
-		clock::time_point m_next_pump {};
-		clock::time_point m_next_greet {};
+		clock::time_point m_next_scan {};
+
+		/// Consecutive scans our own networked name came back set but without the hidden marker. A few in a
+		/// row means the sanitiser stripped the zero-width run, so flip to the visible marker.
+		int m_self_unmarked {};
 
 		bool m_script_injected {};
 		bool m_scoreboard_open {};

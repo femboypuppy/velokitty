@@ -68,6 +68,10 @@ namespace steam {
 		static void receive( int channel, std::vector<message>& out, int max = 32 );
 
 		static void close_channel( std::uint64_t steam_id, int channel );
+
+		/// ESteamNetworkingConnectionState of the session with `steam_id`: 0 none, 1 connecting, 2 finding
+		/// route, 3 connected, 4 closed by peer, 5 problem detected locally.
+		[[nodiscard]] static int session_state( std::uint64_t steam_id );
 	};
 
 } // namespace steam

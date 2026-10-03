@@ -793,6 +793,7 @@ namespace features::combat {
 
 		struct target_result
 		{
+			std::uintptr_t controller{};
 			std::uintptr_t pawn{};
 			scan_point best_point{};
 			math::vector3 aim_angle{};
@@ -813,6 +814,9 @@ namespace features::combat {
 		/// finds the target; a tick without it disarms it.
 		struct track_state
 		{
+			/// The entity cache holds controllers, not pawns, so the controller is what proves the target is
+			/// still in the game; the pawn is checked against the controller's current pawn handle.
+			std::uintptr_t controller{};
 			std::uintptr_t pawn{};
 			int bone_index{ -1 };
 			math::vector3 local_center{};
@@ -872,6 +876,10 @@ namespace features::combat {
 
 		target_result m_target{};
 		track_state m_track{};
+
+		/// Diagnostics: ticks the aim key has been held, and frames on_frame_input actually moved the view.
+		int m_diag_ticks{};
+		int m_diag_steered{};
 
 		std::vector<preview_entry> m_preview{};
 		mutable std::mutex m_preview_mtx{};

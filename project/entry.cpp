@@ -700,6 +700,9 @@ namespace {
 		diag::guard( "unload: menu", [ ] { rendering::g_menu.shutdown( ); } );
 		diag::guard( "unload: events", [ ] { systems::events::shutdown( ); } );
 
+		// A worker thread of ours: it has to be gone before the drain below, or the module never reads as idle.
+		diag::guard( "unload: discord", [ ] { features::misc::g_discord_rpc.shutdown( ); } );
+
 		// Hooks first, resources second: anything the game calls into us for has to stop before what it uses
 		// is released. Every hook is reset through the registry, so none can be missed. Trampolines are kept
 		// alive across the reset; a thread that was already inside a detour still returns through one.
