@@ -261,6 +261,31 @@ namespace features::changer {
 			this->m_item_defs.push_back( std::move( item ) );
 		}
 
+		// After a game update moves a field, this line is what tells which one: its count of blanks jumps.
+		auto no_name{ 0 }, no_model{ 0 }, no_image{ 0 }, no_localized{ 0 };
+		for ( const auto& def : this->m_item_defs )
+		{
+			no_name += def.name.empty( );
+			no_model += def.model_player.empty( );
+			no_image += def.image_inventory.empty( );
+			no_localized += def.localized_name.empty( ) || def.localized_name == def.name;
+		}
+		logging::console::print(
+			xs( "[econ] {} item defs; blank name={} model={} image={} unlocalized={}" ),
+			this->m_item_defs.size( ), no_name, no_model, no_image, no_localized );
+
+		for ( const auto& def : this->m_item_defs )
+		{
+			if ( def.def_index == 7 )
+			{
+				logging::console::print(
+					xs( "[econ] sample def 7: name='{}' model='{}' image='{}' localized='{}' slot={} classes={:#x} rarity={}" ),
+					def.name, def.model_player, def.image_inventory, def.localized_name,
+					def.loadout_slot, def.used_by_classes, def.rarity );
+				break;
+			}
+		}
+
 		return !this->m_item_defs.empty( );
 	}
 
@@ -311,6 +336,25 @@ namespace features::changer {
 			}
 
 			this->m_paint_kits.push_back( std::move( pk ) );
+		}
+
+		auto no_name{ 0 }, no_desc{ 0 }, no_tag{ 0 };
+		for ( const auto& pk : this->m_paint_kits )
+		{
+			no_name += pk.name.empty( );
+			no_desc += pk.desc_token.empty( );
+			no_tag += pk.name_token.empty( );
+		}
+		logging::console::print(
+			xs( "[econ] {} paint kits; blank name={} desc={} tag={}" ),
+			this->m_paint_kits.size( ), no_name, no_desc, no_tag );
+
+		if ( this->m_paint_kits.size( ) > 1 )
+		{
+			const auto& pk = this->m_paint_kits[ 1 ];
+			logging::console::print(
+				xs( "[econ] sample paint kit: id={} name='{}' tag='{}' wear={:.2f}-{:.2f} rarity={}" ),
+				pk.id, pk.name, pk.name_token, pk.wear_min, pk.wear_max, pk.rarity );
 		}
 
 		return !this->m_paint_kits.empty( );
