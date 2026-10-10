@@ -1771,7 +1771,25 @@ namespace features::combat {
 			return not_same_tick && ( client_tick >= next_primary || client_tick >= next_secondary );
 		}
 
+		// The next attack tick only moves once the game's own prediction has run the command that fired. When
+		// two commands are built before that happens, the second still sees the gun as ready and fires again
+		// into a weapon that is mid-cycle: the log had five scout "shots" 13 ms after the real one, each one
+		// reported as a lag compensation miss and fed to the resolver as a confirmed miss. Hold until the value
+		// changes, with a short timeout for a shot the game refused, where it never will.
+		constexpr auto k_unpredicted_shot_grace{ 4 };
+		if ( next_primary == this->m_last_shot_next_primary && tick_base < this->m_last_gun_shot_tick + k_unpredicted_shot_grace )
+		{
+			return false;
+		}
+
 		return not_same_tick && client_tick >= next_primary;
+	}
+
+	void shared::note_gun_shot( int tick_base )
+	{
+		this->m_last_shoot_tick = tick_base;
+		this->m_last_gun_shot_tick = tick_base;
+		this->m_last_shot_next_primary = this->m_ctx.weapon ? memory::read<int>( this->m_ctx.weapon + SCHEMA( "C_BasePlayerWeapon", "m_nNextPrimaryAttackTick"_hash ) ) : -1;
 	}
 
 	bool shared::is_max_accuracy( float inaccuracy ) const

@@ -1,5 +1,6 @@
 #include <pch/pch.hpp>
 #include <core/settings.hpp>
+#include <core/features/features.hpp>
 
 #include "../../rendering.hpp"
 
@@ -25,7 +26,9 @@ namespace rendering {
 		auto& autos = s.m_autos;
 		auto& lg = s.m_lagcomp;
 
-		auto& wg = rb.groups[ this->m_subtab ];
+		const auto subtab = static_cast< std::uint32_t >( std::clamp( this->m_subtab, 0, static_cast< int >( settings::combat::ragebot::k_group_count ) - 1 ) );
+		auto& wg = rb.groups[ subtab ];
+		const auto on_global_tab = subtab == settings::combat::ragebot::k_global_group;
 
 		// Cards go into a scroll region instead of straight into the window, so a column that outgrows
 		// the body scrolls rather than losing its bottom rows. See menu::page_scroll for the why.
@@ -35,6 +38,26 @@ namespace rendering {
 		if ( xui::begin_child( "aimbot##ragebot_aimbot", col_w ) )
 		{
 			xui::checkbox( "enabled", rb.enabled );
+			xui::checkbox( "use global for all weapons", rb.use_global );
+
+			if ( on_global_tab )
+			{
+				// Seeds the global group from whichever weapon is in hand, so switching to global starts
+				// from a tuned group instead of the defaults.
+				const auto held_type = features::combat::g_shared.ctx( ).valid ? features::combat::g_shared.ctx( ).weapon_type : cstypes::weapon_type::sniper;
+				const auto held_idx = held_type - cstypes::weapon_type::pistol;
+				const auto source_idx = held_idx < settings::combat::ragebot::k_weapon_group_count ? held_idx : 4u;
+				constexpr const char* source_names[ ]{ "copy from pistol", "copy from smg", "copy from rifle", "copy from shotgun", "copy from sniper", "copy from lmg" };
+
+				if ( xui::button( source_names[ source_idx ], xui::layout::avail( ).first, 22.0f ) )
+				{
+					wg.copy_values_from( rb.groups[ source_idx ] );
+				}
+			}
+			else if ( rb.use_global.value )
+			{
+				xui::text( "global is on: this tab is not used", tokens::col_text_dim );
+			}
 			xui::checkbox( "silent", wg.silent );
 			xui::checkbox( "no spread", wg.no_spread );
 			xui::checkbox( "subtick shot", wg.subtick_shot );

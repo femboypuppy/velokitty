@@ -283,6 +283,9 @@ namespace features::combat {
 		[[nodiscard]] lagcomp::record* current_autowall_record( ) const { return this->m_current_autowall_record; }
 
 		[[nodiscard]] int& last_shoot_tick( ) { return this->m_last_shoot_tick; }
+		/// Called once a gun shot is committed to a command. Remembers the weapon's next attack tick as it
+		/// read at that moment so can_shoot can tell a shot the game has not predicted yet from a ready gun.
+		void note_gun_shot( int tick_base );
 
 		[[nodiscard]] std::uint32_t get_spread_seed( const math::vector3& angles, int tick ) const;
 		[[nodiscard]] math::vector2 calculate_spread( int seed, float accuracy, float spread, float recoil_index, int item_def_idx, int num_bullets ) const;
@@ -331,6 +334,9 @@ namespace features::combat {
 		inline static thread_local lagcomp::record* m_current_autowall_record{ nullptr };
 
 		int m_last_shoot_tick{};
+		// m_nNextPrimaryAttackTick when the last gun shot was committed, and the tick it was committed on.
+		int m_last_shot_next_primary{ -1 };
+		int m_last_gun_shot_tick{ -1 };
 	};
 
 	class misc
@@ -704,7 +710,7 @@ namespace features::combat {
 		/// Only ever touched from the game thread, so plain integers.
 		struct decision_diag
 		{
-			int frames{}, cant_shoot{}, no_candidates{}, no_hit{}, targets{}, held_hitchance{}, held_duck{}, stop_frames{}, fired{};
+			int frames{}, cant_shoot{}, no_candidates{}, no_hit{}, targets{}, held_hitchance{}, held_duck{}, held_brake{}, stop_frames{}, fired{};
 			float hc_sum{}, hc_short_sum{};
 			int latency_sum{}, latency_max{}, latency_n{};
 			unsigned long long last_report{};

@@ -31,6 +31,7 @@ namespace rendering {
 			if ( category_lower.find( "shotgun" ) != std::string::npos ) return 3;
 			if ( category_lower.find( "sniper" ) != std::string::npos ) return 4;
 			if ( category_lower.find( "lmg" ) != std::string::npos ) return 5;
+			if ( category_lower.find( "global" ) != std::string::npos ) return 6;
 			return 0;
 		}
 

@@ -161,7 +161,25 @@ namespace features::combat {
 
 				out.velocity = memory::read<math::vector3>( local.pawn + SCHEMA( "C_BaseEntity", "m_vecAbsVelocity"_hash ) );
 				out.spread = g_shared.get_spread( );
-				out.predicted_inaccuracy = g_shared.get_inaccuracy( true );
+
+				// Airborne, the fire code evaluates the inaccuracy one tick of gravity further on than the state
+				// this simulation leaves behind: across two deathmatch sessions 233 of 240 air shots logged a fire-time
+				// vertical speed exactly sv_gravity * tick_interval (12.5) below the simulated one. Air inaccuracy
+				// follows the vertical speed, so the no-spread solve was built on a value 3-14% off -- the bullet
+				// left the aim line by up to half a degree, more than a head at 1000 units.
+				const auto sim_flags = memory::read<std::uint32_t>( local.pawn + SCHEMA( "C_BaseEntity", "m_fFlags"_hash ) );
+				if ( !( sim_flags & cstypes::entity_flags::on_ground ) )
+				{
+					const auto gravity_scale = memory::read<float>( local.pawn + SCHEMA( "C_BaseEntity", "m_flGravityScale"_hash ) );
+					const auto gravity = CONVAR( "sv_gravity" )->get<float>( ) * ( gravity_scale > 0.0f ? gravity_scale : 1.0f );
+
+					out.velocity.z -= gravity * cstypes::tick_interval;
+					out.predicted_inaccuracy = g_shared.get_inaccuracy_at_velocity( local.pawn, out.velocity );
+				}
+				else
+				{
+					out.predicted_inaccuracy = g_shared.get_inaccuracy( true );
+				}
 			} );
 
 		ctx.spread = out.spread;
@@ -528,6 +546,30 @@ namespace features::combat {
 			return false;
 		};
 
+		// Auto stop brakes twice per command: once before the ragebot, with last command's target, and once
+		// after it, for a target that only appeared this command. The second pass rewrites the movement of a
+		// command whose shot was already built -- the inaccuracy it was predicted with is the unbraked one, and
+		// the game fires with less speed than the no-spread solve assumed (every ground miss in the log had the
+		// fire-time inaccuracy below the predicted one). When that pass is going to brake, the shot waits one
+		// command: the next command brakes before the ragebot runs, so its prediction includes the brake.
+		const auto brake_after_shot = [ & ]
+		{
+			if ( !settings::g_combat.m_autostop.enabled.value || g_misc.autostop( ).braked_this_tick( ) )
+			{
+				return false;
+			}
+
+			const auto& velocity = systems::g_prediction.pre( ).networked_velocity;
+			if ( std::hypot( velocity.x, velocity.y ) <= 1.0f )
+			{
+				return false;
+			}
+
+			// Mirrors autostop::on_create_move: on the ground it always brakes for a target, in the air only
+			// for jump scout.
+			return ctx.on_ground || g_misc.jumpscout( ).active_this_tick( );
+		};
+
 		auto candidates = this->gather_candidates( local );
 		++this->m_diag.frames;
 
@@ -591,6 +633,7 @@ namespace features::combat {
 			if ( all_hits.empty( ) )
 			{
 				++this->m_diag.no_hit;
+				this->m_first_target_tick = -1;
 				return;
 			}
 
@@ -600,18 +643,37 @@ namespace features::combat {
 			if ( !best.valid )
 			{
 				++this->m_diag.no_hit;
+				this->m_first_target_tick = -1;
 				return;
 			}
 
 			++this->m_diag.targets;
+
+			if ( this->m_first_target_tick < 0 )
+			{
+				this->m_first_target_tick = g_shared.ctx( ).current_tick;
+			}
 
 			// no_spread does not care about accuracy, but autostop is gated on this flag and
 			// the player still expects the brake to engage on a target. Without it this path
 			// silently disabled autostop for anyone running no_spread.
 			this->m_should_stop = this->should_stop_movement( ctx );
 
+			if ( this->m_should_stop )
+			{
+				++this->m_diag.stop_frames;
+			}
+
 			if ( !allow_fire )
 			{
+				return;
+			}
+
+			// The solve is exact for the inaccuracy it is given, so a command whose movement changes after
+			// it was predicted fires on the wrong seed. One command later the brake is part of the prediction.
+			if ( brake_after_shot( ) )
+			{
+				++this->m_diag.held_brake;
 				return;
 			}
 
@@ -620,7 +682,12 @@ namespace features::combat {
 
 			if ( this->m_firing_this_tick )
 			{
+				const auto waited = std::max( 0, g_shared.ctx( ).current_tick - this->m_first_target_tick );
 				++this->m_diag.fired;
+				++this->m_diag.latency_n;
+				this->m_diag.latency_sum += waited;
+				this->m_diag.latency_max = std::max( this->m_diag.latency_max, waited );
+				this->m_first_target_tick = -1;
 			}
 
 			return;
@@ -738,6 +805,13 @@ namespace features::combat {
 		if ( shot_viable && !ready_to_fire )
 		{
 			++this->m_diag.held_duck;
+		}
+
+		// Same reason as the no-spread path: the hit chance was computed for unbraked movement.
+		if ( ready_to_fire && allow_fire && brake_after_shot( ) )
+		{
+			++this->m_diag.held_brake;
+			ready_to_fire = false;
 		}
 
 		if ( ready_to_fire && allow_fire )
@@ -1565,10 +1639,10 @@ namespace features::combat {
 
 		diag::writef(
 			diag::level::debug,
-			"rage: frames=%d cant_shoot=%d no_candidates=%d no_hit=%d targets=%d fired=%d | held: hitchance=%d (avg short by %.0f%%) duckpeek=%d | autostop_frames=%d | avg hc on target=%.0f%% | ticks target->shot: avg=%.1f max=%d n=%d | scan: candidates=%d extrapolated=%d records=%d points=%d fov=%d no_damage=%d below_min=%d head_group=%d ok=%d best_dmg=%d",
+			"rage: frames=%d cant_shoot=%d no_candidates=%d no_hit=%d targets=%d fired=%d | held: hitchance=%d (avg short by %.0f%%) duckpeek=%d brake=%d | autostop_frames=%d | avg hc on target=%.0f%% | ticks target->shot: avg=%.1f max=%d n=%d | scan: candidates=%d extrapolated=%d records=%d points=%d fov=%d no_damage=%d below_min=%d head_group=%d ok=%d best_dmg=%d",
 			d.frames, d.cant_shoot, d.no_candidates, d.no_hit, d.targets, d.fired,
 			d.held_hitchance, d.held_hitchance ? d.hc_short_sum / static_cast< float >( d.held_hitchance ) * 100.0f : 0.0f,
-			d.held_duck, d.stop_frames,
+			d.held_duck, d.held_brake, d.stop_frames,
 			d.targets ? d.hc_sum / static_cast< float >( d.targets ) * 100.0f : 0.0f,
 			d.latency_n ? static_cast< float >( d.latency_sum ) / static_cast< float >( d.latency_n ) : 0.0f,
 			d.latency_max, d.latency_n,
@@ -1948,7 +2022,7 @@ namespace features::combat {
 		// whatever yaw the command was carrying -- the anti-aim fake, if one was on.
 		const auto subtick_attack = want_subtick && this->emit_subtick_shot( cmd );
 
-		g_shared.last_shoot_tick( ) = tick_base;
+		g_shared.note_gun_shot( tick_base );
 
 		// Tell the resolver a shot is committed under this pawn's current hypothesis. on_tick
 		// watches the victim's health from here: no drop within the grace window rotates the
@@ -2082,14 +2156,15 @@ namespace features::combat {
 		// punch taken off it, the angle the command actually carries, and the ticks stamped onto the input.
 		diag::writef(
 			diag::level::info,
-			"fire detail: no_spread=%d silent=%d subtick=%d forced=%d | eye=(%.1f %.1f %.1f) uninterp=%d player_tick=%d frac=%.3f lerp=%d+%.3f | aim=(%.2f %.2f %.2f) punch=(%.3f %.3f %.3f) render_punch=(%.3f %.3f) cmd=(%.2f %.2f) | tick_base=%d current=%d record_age=%d hp=%d | solver cells=%d margin=%.3f | pen=%d hitbox=%d dmg=%.0f | inacc=%.5f at vz=%.1f",
+			"fire detail: no_spread=%d silent=%d subtick=%d forced=%d | eye=(%.1f %.1f %.1f) uninterp=%d player_tick=%d frac=%.3f lerp=%d+%.3f | aim=(%.2f %.2f %.2f) punch=(%.3f %.3f %.3f) render_punch=(%.3f %.3f) cmd=(%.2f %.2f) | tick_base=%d current=%d record_age=%d hp=%d | solver cells=%d margin=%.3f | pen=%d hitbox=%d center=%d dmg=%.0f | target speed=%.0f | inacc=%.5f at vz=%.1f",
 			config.no_spread.value ? 1 : 0, config.silent.value ? 1 : 0, subtick_attack ? 1 : 0, was_forced ? 1 : 0,
 			shoot_eye.x, shoot_eye.y, shoot_eye.z,
 			tgt.hit.source_eye.is_uninterpolated ? 1 : 0, tgt.hit.source_eye.player_tick, tgt.hit.source_eye.player_frac, tgt.hit.source_eye.lerp_ticks_int, tgt.hit.source_eye.lerp_ticks_frac,
 			aim_angle.x, aim_angle.y, aim_angle.z, aim_punch.x, aim_punch.y, aim_punch.z, render_punch.x, render_punch.y, command_aim.x, command_aim.y,
 			tick_base, shared_ctx.current_tick, shared_ctx.current_tick - tgt.hit.record->tick, tgt.hit.health,
 			solution.evaluated, solution.margin,
-			tgt.hit.penetrated ? 1 : 0, tgt.hit.hitbox_index, tgt.hit.damage,
+			tgt.hit.penetrated ? 1 : 0, tgt.hit.hitbox_index, tgt.hit.is_center ? 1 : 0, tgt.hit.damage,
+			memory::read<math::vector3>( tgt.hit.pawn + SCHEMA( "C_BaseEntity", "m_vecVelocity"_hash ) ).length_2d( ),
 			shared_ctx.inaccuracy, shared_ctx.inaccuracy_velocity_z );
 	}
 

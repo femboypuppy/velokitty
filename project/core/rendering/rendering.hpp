@@ -225,7 +225,7 @@ namespace rendering {
             entry cfg_plus{};
         } m_textures{};
 
-        static constexpr auto k_max_subtabs{ 6 };
+        static constexpr auto k_max_subtabs{ 7 };
 
         struct subtab_info
         {
@@ -235,7 +235,7 @@ namespace rendering {
 
         static constexpr subtab_info k_subtab_defs[ static_cast< int >( tab::count ) ]
         {
-            { { "pistol", "smg", "rifle", "shotgun", "sniper", "lmg" }, 6 },
+            { { "pistol", "smg", "rifle", "shotgun", "sniper", "lmg", "global" }, 7 },
             { { "pistol", "smg", "rifle", "shotgun", "sniper", "lmg" }, 6 },
             { { "enemies", "allies", "local" },                         3 },
             { { "esp", "scene", "weather" },                            3 },

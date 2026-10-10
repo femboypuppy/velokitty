@@ -9,9 +9,15 @@ namespace settings {
 	{
 		struct ragebot
 		{
-			static constexpr auto k_group_count{ 6u };
+			// Six weapon groups plus the global one at k_global_group. Weapon types only ever map onto the
+			// first six; the global group is reached through use_global.
+			static constexpr auto k_weapon_group_count{ 6u };
+			static constexpr auto k_global_group{ 6u };
+			static constexpr auto k_group_count{ 7u };
 
 			xui::setting enabled{ true, {}, "enabled", "ragebot" };
+			// One set of settings for every gun instead of one per weapon group.
+			xui::setting use_global{ false, {}, "use global", "ragebot" };
 
 			struct weapon_group
 			{
@@ -108,33 +114,72 @@ namespace settings {
 					this->min_damage_override.bind = { .key = VK_XBUTTON2, .mode = xui::bind_mode::hold_on };
 					this->hitchance_override.bind = { .key = VK_SPACE, .mode = xui::bind_mode::hold_on };
 				}
+
+				/// Copies every value and bind from another group. Field by field on purpose: a setting's
+				/// name and category are its config key, and assigning whole settings would carry the other
+				/// group's key over and make both groups save into the same slot.
+				void copy_values_from( const weapon_group& o )
+				{
+					for ( auto [dst, src] : { std::pair{ &this->silent, &o.silent }, { &this->no_spread, &o.no_spread }, { &this->subtick_shot, &o.subtick_shot },
+						{ &this->body_aim, &o.body_aim }, { &this->force_shot_air, &o.force_shot_air }, { &this->force_shot, &o.force_shot },
+						{ &this->min_damage_override, &o.min_damage_override }, { &this->hitchance_override, &o.hitchance_override },
+						{ &this->resolver, &o.resolver }, { &this->prefer_safe_point, &o.prefer_safe_point }, { &this->force_safe_point, &o.force_safe_point },
+						{ &this->baim_lethal, &o.baim_lethal }, { &this->dynamic_pointscale, &o.dynamic_pointscale }, { &this->debug_multipoints, &o.debug_multipoints } } )
+					{
+						dst->value = src->value;
+						dst->bind = src->bind;
+					}
+
+					this->max_fov.value = o.max_fov.value;
+					this->hitchance.value = o.hitchance.value;
+					this->min_damage.value = o.min_damage.value;
+					this->min_damage_override_value.value = o.min_damage_override_value.value;
+					this->hitchance_override_value.value = o.hitchance_override_value.value;
+					this->penetration_layers.value = o.penetration_layers.value;
+					this->backtrack_records.value = o.backtrack_records.value;
+					this->desync_range.value = o.desync_range.value;
+					this->pointscale.value = o.pointscale.value;
+					std::copy( std::begin( o.hitboxes.values ), std::end( o.hitboxes.values ), std::begin( this->hitboxes.values ) );
+				}
 			};
 
 			std::array<weapon_group, k_group_count> groups{};
 
 			ragebot( )
 			{
-				constexpr const char* weapon_names[ ]{ "pistol", "smg", "rifle", "shotgun", "sniper", "lmg" };
+				constexpr const char* group_names[ ]{ "pistol", "smg", "rifle", "shotgun", "sniper", "lmg", "global" };
+				static_assert( std::size( group_names ) == k_group_count );
 
 				for ( std::uint32_t i = 0; i < k_group_count; ++i )
 				{
-					this->groups[ i ].init( std::string( "ragebot - " ) + weapon_names[ i ] );
+					this->groups[ i ].init( std::string( "ragebot - " ) + group_names[ i ] );
 				}
 
 				this->groups[ 0 ].set_default_binds( );
 				this->groups[ 4 ].set_default_binds( );
+				this->groups[ k_global_group ].set_default_binds( );
 			}
 
 			weapon_group& get_group( std::uint32_t weapon_type )
 			{
+				if ( this->use_global.value )
+				{
+					return this->groups[ k_global_group ];
+				}
+
 				const auto idx = weapon_type - cstypes::weapon_type::pistol;
-				return this->groups[ idx < k_group_count ? idx : 2 ];
+				return this->groups[ idx < k_weapon_group_count ? idx : 2 ];
 			}
 
 			const weapon_group& get_group( std::uint32_t weapon_type ) const
 			{
+				if ( this->use_global.value )
+				{
+					return this->groups[ k_global_group ];
+				}
+
 				const auto idx = weapon_type - cstypes::weapon_type::pistol;
-				return this->groups[ idx < k_group_count ? idx : 2 ];
+				return this->groups[ idx < k_weapon_group_count ? idx : 2 ];
 			}
 		} m_ragebot{};
 
