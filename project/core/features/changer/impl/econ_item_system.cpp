@@ -28,8 +28,8 @@ namespace features::changer {
 			{
 				const auto item_count = memory::safe_read<int>( schema + 0x128 ).value_or( 0 );
 				const auto item_array = memory::safe_read<std::uintptr_t>( schema + 0x130 ).value_or( 0 );
-				const auto paint_count = memory::safe_read<int>( schema + 0x2F0 ).value_or( 0 );
-				const auto paint_nodes = memory::safe_read<std::uintptr_t>( schema + 0x2F8 ).value_or( 0 );
+				const auto paint_count = memory::safe_read<int>( schema + 0x2A0 ).value_or( 0 );
+				const auto paint_nodes = memory::safe_read<std::uintptr_t>( schema + 0x2A8 ).value_or( 0 );
 
 				if ( item_count > 0 && item_count <= 10000 && item_array
 					&& paint_count > 0 && paint_count <= 10000 && paint_nodes )
@@ -291,7 +291,8 @@ namespace features::changer {
 
 	bool econ_item_system::parse_paint_kits( std::uintptr_t schema )
 	{
-		const auto tree_base = schema + 0x2F0;
+		// Moved from 0x2F0 in the October 9 update (client.dll's paint kit loop reads 0x2A0 / 0x2A8).
+		const auto tree_base = schema + 0x2A0;
 
 		const auto count = memory::read<int>( tree_base + 0x00 );
 		const auto nodes = memory::read<std::uintptr_t>( tree_base + 0x08 );
@@ -306,6 +307,13 @@ namespace features::changer {
 		for ( auto i = 0; i < count; i++ )
 		{
 			const auto node_base = nodes + static_cast< std::uintptr_t >( 32 * i );
+
+			// A free node links to itself; the game's own loop skips these the same way.
+			if ( memory::read<int>( node_base ) == i )
+			{
+				continue;
+			}
+
 			const auto pk_ptr = memory::read<std::uintptr_t>( node_base + 24 );
 
 			if ( !pk_ptr )
