@@ -898,8 +898,11 @@ namespace features::misc {
 
 		input_pitch = std::clamp( input_pitch, -89.0f, 89.0f );
 
-		base->mutable_viewangles( )->set_x( input_pitch );
-		base->mutable_viewangles( )->set_y( corrected_yaw );
+		if ( const auto cmd_angles = base->mutable_viewangles( ) )
+		{
+			cmd_angles->set_x( input_pitch );
+			cmd_angles->set_y( corrected_yaw );
+		}
 	}
 
 	void projectile_trajectory::compute_desired_direction( math::vector3& desired_forward ) const

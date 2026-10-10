@@ -282,7 +282,13 @@ namespace features::movement {
 		const auto& prestate = systems::g_prediction.pre( );
 		const auto velocity = prestate.networked_velocity;
 		const auto speed_2d = velocity.length_2d( );
-		const auto command_yaw = base->viewangles( )->y( );
+		const auto command_angles = base->viewangles( );
+		if ( !command_angles )
+		{
+			return;
+		}
+
+		const auto command_yaw = command_angles->y( );
 
 		const auto player_move = movement_from_buttons( this->m_last_pressed );
 		if ( player_move.x == 0.0f && player_move.y == 0.0f )

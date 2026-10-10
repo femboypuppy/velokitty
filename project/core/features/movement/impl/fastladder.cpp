@@ -28,7 +28,10 @@ namespace features::movement {
 		}
 
 		const auto base = cmd->csgo_user_cmd.mutable_base( );
-		if ( !base )
+		// The movement pair below only works together with the yaw written into the command's angles, so
+		// without angles to write into leave the command alone entirely.
+		const auto cmd_angles = base ? base->mutable_viewangles( ) : nullptr;
+		if ( !cmd_angles )
 		{
 			return;
 		}
@@ -68,9 +71,9 @@ namespace features::movement {
 		buttons |= going_up ? cstypes::command_buttons::in_moveleft : cstypes::command_buttons::in_moveright;
 		cmd->buttons.value = buttons;
 
-		base->mutable_viewangles( )->set_x( modified.x );
-		base->mutable_viewangles( )->set_y( modified.y );
-		base->mutable_viewangles( )->set_z( 0.0f );
+		cmd_angles->set_x( modified.x );
+		cmd_angles->set_y( modified.y );
+		cmd_angles->set_z( 0.0f );
 
 		// The pair written above is expressed in *this* yaw, not the camera's -- that 90 degree offset
 		// paired with back+strafe is the whole trick. Hand the basis over so the correction at the end

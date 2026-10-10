@@ -272,7 +272,10 @@ namespace systems {
 
 	void input::desubtick( usercmd* cmd ) const
 	{
-		cmd->csgo_user_cmd.mutable_base( )->mutable_subtick_moves( )->clear( );
+		if ( const auto base = cmd->csgo_user_cmd.mutable_base( ) )
+		{
+			base->mutable_subtick_moves( )->clear( );
+		}
 	}
 
 	void input::set_weapon_select( usercmd* cmd, std::uintptr_t csgo_input ) const

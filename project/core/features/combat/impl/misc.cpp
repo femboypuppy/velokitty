@@ -160,6 +160,14 @@ namespace features::combat {
 		const auto view_angles = systems::g_input.get_view_angles( );
 		const auto& ctx = g_shared.ctx( );
 
+		// A command can arrive without its view angles allocated (seen on a community server). Nothing to
+		// write the fake into, so this command goes out with the real angles.
+		const auto cmd_angles = base ? base->mutable_viewangles( ) : nullptr;
+		if ( !cmd_angles )
+		{
+			return;
+		}
+
 		if ( cmd->buttons.value & cstypes::command_buttons::in_use )
 		{
 			return;
@@ -188,9 +196,9 @@ namespace features::combat {
 
 		math::helpers::normalize_angles( this->m_modified_angles );
 
-		base->mutable_viewangles( )->set_x( this->m_modified_angles.x );
-		base->mutable_viewangles( )->set_y( this->m_modified_angles.y );
-		base->mutable_viewangles( )->set_z( this->m_modified_angles.z );
+		cmd_angles->set_x( this->m_modified_angles.x );
+		cmd_angles->set_y( this->m_modified_angles.y );
+		cmd_angles->set_z( this->m_modified_angles.z );
 	}
 
 	void misc::antiaim::log_debug( ) const
