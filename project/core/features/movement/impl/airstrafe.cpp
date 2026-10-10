@@ -15,6 +15,13 @@ namespace features::movement {
 			return 0.0f;
 		}
 
+		// The cap exists to stay under the jump's speed cut, and servers running sv_enablebunnyhopping have no
+		// cut. HvH servers usually do, and capping there only held the strafe at ~250 u/s for nothing.
+		if ( const auto enable_bhop = CONVAR( "sv_enablebunnyhopping" ); enable_bhop && enable_bhop->get<bool>( ) )
+		{
+			return 0.0f;
+		}
+
 		const auto& ctx = features::combat::g_shared.ctx( );
 		const auto max_speed = ctx.valid && ctx.weapon_max_speed > 1.0f ? ctx.weapon_max_speed : 250.0f;
 
