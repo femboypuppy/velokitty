@@ -513,6 +513,19 @@ namespace {
 		return EXCEPTION_EXECUTE_HANDLER;
 	}
 
+	// The crash is contained so the game keeps running, but on a ship build that used to mean no menu and
+	// no message at all. Separate from init_thread because xs() builds an object, which __try forbids.
+	void report_init_crash( )
+	{
+#if !defined( DEV )
+		MessageBoxA(
+			nullptr,
+			xs( "initialization crashed. details are in velocity_init.log next to the dll." ),
+			xs( "..." ),
+			MB_ICONERROR );
+#endif
+	}
+
 	DWORD WINAPI init_thread( LPVOID param )
 	{
 		__try
@@ -521,6 +534,7 @@ namespace {
 		}
 		__except ( diag_exception_filter( GetExceptionInformation( ) ) )
 		{
+			report_init_crash( );
 			return 0;
 		}
 	}

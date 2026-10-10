@@ -618,7 +618,11 @@ found_type_descriptor:
 		// say -- returns whatever was copied instead of faulting the game. SEH cannot live in a function that
 		// also owns a C++ object with a destructor (the std::string), so the copy is isolated here and the
 		// string is built by the caller afterwards.
-		std::size_t copy_cstr_guarded (std::uintptr_t address, char* dst, std::size_t cap) {
+		//
+		// noinline is load-bearing: with whole-program optimization the Ship build inlined this into
+		// read_string and the __try scope did not survive -- the v0.1.8 binary has no handler on read_string
+		// at all, so a stale pointer of 0x8 from the item schema killed initialization.
+		__declspec(noinline) std::size_t copy_cstr_guarded (std::uintptr_t address, char* dst, std::size_t cap) {
 			std::size_t len {0};
 			__try {
 				const auto src = reinterpret_cast<const char*>(address);
@@ -634,7 +638,9 @@ found_type_descriptor:
 	}
 
 	std::string read_string (std::uintptr_t address, std::size_t max_length) {
-		if (!address) {
+		// The first 64 KiB is never mapped on Windows, so anything down there is a small integer read
+		// through a stale offset, not a string.
+		if (address < 0x10000) {
 			return {};
 		}
 
