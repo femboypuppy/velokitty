@@ -257,10 +257,20 @@ namespace rendering {
 				if ( xui::begin_popup( "##airstrafe_popup", 220.0f ) )
 				{
 					xui::checkbox( "fully directional", mov.airstrafe_fully_directional );
+					xui::checkbox( "speed cap##as", mov.strafe_speed_cap );
+					xui::slider_float( "cap##as", mov.strafe_speed_cap_percent, 90.0f, 130.0f, "%.0f%% of max" );
 					xui::end_popup( );
 				}
 
 				xui::checkbox( "auto strafe", mov.m_test_strafer.enabled );
+
+				// Same setting as in the airstrafe popup: one cap, whichever strafer is running.
+				if ( xui::begin_popup( "##autostrafe_popup", 220.0f ) )
+				{
+					xui::checkbox( "speed cap##ts", mov.strafe_speed_cap );
+					xui::slider_float( "cap##ts", mov.strafe_speed_cap_percent, 90.0f, 130.0f, "%.0f%% of max" );
+					xui::end_popup( );
+				}
 
 				// The quantized maths is meaningless when the server is not quantizing, and its yaw steps are
 				// ignored when the server drops subtick view angles. Airstrafe strafes in its place there, so

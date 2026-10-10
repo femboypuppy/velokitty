@@ -1595,6 +1595,11 @@ namespace settings {
 		xui::setting bhop{ true, {}, "bhop", "movement" };
 		xui::setting airstrafe{ true, {}, "airstrafe", "movement" };
 		xui::setting airstrafe_fully_directional{ true, {}, "fully directional", "movement - airstrafe" };
+		// Both strafers stop gaining speed at this share of the weapon's max speed and keep turning there.
+		// The game cuts horizontal speed to about 110% of it on every jump, so strafing past that only
+		// buys a speed drop on the next hop.
+		xui::setting strafe_speed_cap{ true, {}, "speed cap", "movement - airstrafe" };
+		config::val<float> strafe_speed_cap_percent{ 110.0f, "movement - airstrafe", "speed cap percent" };
 		xui::setting jumpbug{ true, {}, "jumpbug", "movement" };
 		xui::setting fastladder{ true, {}, "fastladder", "movement" };
 		xui::setting edgejump{ false, { 'E', xui::bind_mode::hold_on}, "edgejump", "movement" };

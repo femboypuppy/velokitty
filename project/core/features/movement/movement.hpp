@@ -12,6 +12,16 @@ namespace features::movement {
 	};
 
 	inline diagnostics g_diag{};
+
+	/// Horizontal speed both strafers hold at, from the speed cap setting and the held weapon's max speed.
+	/// 0 when the cap is off.
+	[[nodiscard]] float strafe_speed_cap( );
+
+	/// Degrees between the velocity and the wish direction for one air-accel step of `step` that keeps the
+	/// speed at `cap` -- past perpendicular, so the strafe still turns but adds nothing, and further back when
+	/// already over the cap. nullopt while the normal strafe angle would not reach the cap this step.
+	[[nodiscard]] std::optional<float> speed_cap_angle( float speed, float step, float air_max_wishspeed, float cap );
+
 	class bhop
 	{
 	public:

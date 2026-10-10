@@ -8,6 +8,49 @@
 
 namespace features::movement {
 
+	float strafe_speed_cap( )
+	{
+		if ( !settings::g_movement.strafe_speed_cap.value )
+		{
+			return 0.0f;
+		}
+
+		const auto& ctx = features::combat::g_shared.ctx( );
+		const auto max_speed = ctx.valid && ctx.weapon_max_speed > 1.0f ? ctx.weapon_max_speed : 250.0f;
+
+		// A couple of units under the line, so a strafe step that lands right on it is not the one the jump trims.
+		constexpr auto k_margin{ 2.0f };
+		return std::fmaxf( max_speed * std::clamp( settings::g_movement.strafe_speed_cap_percent.value, 50.0f, 200.0f ) / 100.0f - k_margin, 1.0f );
+	}
+
+	std::optional<float> speed_cap_angle( float speed, float step, float air_max_wishspeed, float cap )
+	{
+		if ( cap <= 0.0f || speed < 1.0f || step <= 0.0f )
+		{
+			return std::nullopt;
+		}
+
+		// Air acceleration adds `step` along the wish direction while the velocity's projection on it stays
+		// under air_max_wishspeed. Over one step the speed changes by about step * cos + step^2 / ( 2 * speed ).
+		// The normal strafe sits at the largest cos that still gets the whole step, which is also its
+		// largest gain; past that cos the step shrinks and the strafe stops turning.
+		const auto max_cos = std::clamp( ( air_max_wishspeed - step ) / speed, -1.0f, 1.0f );
+		const auto step_sq_term = step * step / ( 2.0f * speed );
+		const auto normal_gain = step * max_cos + step_sq_term;
+
+		if ( speed + normal_gain <= cap )
+		{
+			return std::nullopt;
+		}
+
+		// Ask for exactly the change that lands on the cap: a little gain just under it, none at it (cos
+		// slightly negative -- turning at constant speed), a braking pull above it. Capping cos at max_cos keeps
+		// the full step, so the turn rate never drops.
+		const auto wanted = std::clamp( cap - speed, -step, normal_gain );
+		const auto cos_angle = std::clamp( ( wanted - step_sq_term ) / step, -1.0f, max_cos );
+		return std::acosf( cos_angle ) * ( 180.0f / std::numbers::pi_v<float> );
+	}
+
 	void airstrafe::on_create_move( systems::input::usercmd* cmd )
 	{
 		g_diag.airstrafe_calls.fetch_add( 1, std::memory_order_relaxed );
@@ -158,6 +201,7 @@ namespace features::movement {
 		const auto basis_yaw = features::combat::g_misc.antiaim( ).movement_basis_yaw( base );
 		const auto cmd_move_backup = math::vector3{ base->forwardmove( ), base->leftmove( ), 0.0f };
 		const auto effective_maxspeed = memory::read<float>( movement_services + SCHEMA( "CPlayer_MovementServices", "m_flMaxspeed"_hash ) );
+		const auto speed_cap = strafe_speed_cap( );
 
 		constexpr auto subtick_count{ 32 };
 		constexpr auto frame_time{ cstypes::tick_interval / static_cast< float >( subtick_count ) };
@@ -309,7 +353,16 @@ namespace features::movement {
 					auto velocity_delta = target_yaw - velocity_angle;
 					math::helpers::normalize_angle( velocity_delta );
 
-					if ( ( std::fabsf( velocity_delta ) > 170.0f && speed_2d > 80.0f ) || ( velocity_delta > ideal_angle && speed_2d > 80.0f ) )
+					if ( const auto cap_angle = speed_cap_angle( speed_2d, half_accel, sv_air_max_wishspeed, speed_cap ) )
+					{
+						// At the cap: wish at cap_angle off the velocity, on the side of the direction asked for, or
+						// alternating when already going that way. With leftmove +1 the wish sits 90 degrees right of
+						// target_yaw (see rotate_movement), hence the + 90.
+						const auto side = std::fabsf( velocity_delta ) > 2.0f ? ( velocity_delta > 0.0f ? 1.0f : -1.0f ) : ( this->m_side_switch ? 1.0f : -1.0f );
+						target_yaw = velocity_angle + side * *cap_angle + 90.0f;
+						base->set_leftmove( 1.0f );
+					}
+					else if ( ( std::fabsf( velocity_delta ) > 170.0f && speed_2d > 80.0f ) || ( velocity_delta > ideal_angle && speed_2d > 80.0f ) )
 					{
 						target_yaw = velocity_angle + ideal_angle;
 						base->set_leftmove( -1.0f );

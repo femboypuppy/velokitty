@@ -50,10 +50,16 @@ namespace features::movement {
 			return std::fmaxf( std::acosf( cos_theta ) * ( 180.0f / std::numbers::pi_v<float> ), 1.0f );
 		}
 
-		[[nodiscard]] float ref_air_strafer( float vel_x, float vel_y, float target_yaw, float dt, bool side_switch, float wishspeed, float air_accel, float air_max_wishspeed )
+		[[nodiscard]] float ref_air_strafer( float vel_x, float vel_y, float target_yaw, float dt, bool side_switch, float wishspeed, float air_accel, float air_max_wishspeed, float speed_cap )
 		{
 			const auto speed = std::sqrtf( vel_x * vel_x + vel_y * vel_y );
-			const auto theta = ref_ideal_angle( speed, dt, wishspeed, air_accel, air_max_wishspeed );
+			auto theta = ref_ideal_angle( speed, dt, wishspeed, air_accel, air_max_wishspeed );
+
+			// Near the speed cap the wish swings past perpendicular: same turning, no speed gained.
+			if ( const auto cap_angle = speed_cap_angle( speed, wishspeed * air_accel * dt, air_max_wishspeed, speed_cap ) )
+			{
+				theta = *cap_angle;
+			}
 
 			if ( speed < 15.0f )
 			{
@@ -299,6 +305,7 @@ namespace features::movement {
 		const auto sv_maxspeed = CONVAR ("sv_maxspeed")->get<float>( );
 		const auto sv_air_max_wishspeed = CONVAR ("sv_air_max_wishspeed")->get<float>( );
 		const auto surface_friction = prestate.surface_friction;
+		const auto speed_cap = strafe_speed_cap( );
 
 		// Two different yaws, and mixing them up is what made the strafe wander with the anti-aim.
 		//
@@ -326,7 +333,7 @@ namespace features::movement {
 		for ( auto i = 1; i <= k_max_subticks; ++i )
 		{
 			const auto entry_side = ( ( this->m_substep_counter + i ) % 2 ) == 0;
-			const auto wishdir_yaw = ref_air_strafer( sim_vx, sim_vy, target_yaw, sub_frame, entry_side, sv_maxspeed, sv_airaccelerate, sv_air_max_wishspeed );
+			const auto wishdir_yaw = ref_air_strafer( sim_vx, sim_vy, target_yaw, sub_frame, entry_side, sv_maxspeed, sv_airaccelerate, sv_air_max_wishspeed, speed_cap );
 
 			auto target_view_yaw = wishdir_yaw - base_yaw_offset;
 			math::helpers::normalize_angle( target_view_yaw );
