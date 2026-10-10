@@ -4,8 +4,10 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace aimwhere
 {
@@ -41,6 +43,38 @@ namespace aimwhere
         }
 
         public static bool IsInjected(Process process) => ModuleNames(process).Contains("aimwhere.dll");
+
+        public static bool IsElevated()
+        {
+            using (var identity = WindowsIdentity.GetCurrent())
+                return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+        }
+
+        /// False when cs2 runs at a higher integrity level than us, which happens whenever Steam was started as
+        /// administrator: Windows then refuses every handle beyond basic info, so nothing below would work.
+        public static bool CanAccess(Process process)
+        {
+            var handle = OpenProcess(0x0400 | 0x0010 | 0x00100000, false, process.Id); // query, vm read, synchronize
+            if (handle == IntPtr.Zero)
+                return Marshal.GetLastWin32Error() != 5;
+            CloseHandle(handle);
+            return true;
+        }
+
+        /// Starts this loader again as administrator, telling it to inject straight away. False if the UAC
+        /// prompt was declined.
+        public static bool RelaunchElevated()
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--inject") { UseShellExecute = true, Verb = "runas" });
+                return true;
+            }
+            catch (Win32Exception e) when (e.NativeErrorCode == 1223)
+            {
+                return false;
+            }
+        }
 
         public static async Task<Process> WaitForProcessAsync(TimeSpan timeout)
         {

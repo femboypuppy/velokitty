@@ -45,7 +45,7 @@ namespace aimwhere
         private readonly Updater m_updater = new Updater();
         private Task<Updater.Result> m_update;
 
-        public LoaderForm()
+        public LoaderForm(bool auto_inject)
         {
             Text = "aimwhere";
             FormBorderStyle = FormBorderStyle.None;
@@ -80,7 +80,12 @@ namespace aimwhere
             };
             timer.Start();
 
-            Shown += (s, e) => StartUpdate();
+            Shown += (s, e) =>
+            {
+                StartUpdate();
+                if (auto_inject)
+                    Inject();
+            };
         }
 
         private void StartUpdate()
@@ -147,6 +152,18 @@ namespace aimwhere
                     process = await Game.WaitForProcessAsync(TimeSpan.FromMinutes(3));
                     if (process == null)
                         throw new Exception("cs2 didn't start, is steam logged in?");
+                }
+
+                if (!Game.CanAccess(process))
+                {
+                    if (Game.IsElevated())
+                        throw new Exception("cs2 denied access even as administrator");
+
+                    SetStatus("cs2 runs as admin, asking for admin...");
+                    if (!Game.RelaunchElevated())
+                        throw new Exception("cs2 runs as admin: allow the prompt, or restart steam normally");
+                    Close();
+                    return;
                 }
 
                 SetStatus("waiting for cs2 to finish loading...");
