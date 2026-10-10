@@ -25,8 +25,26 @@ namespace features::movement {
 		void reset( );
 		[[nodiscard]] bool press( systems::input::usercmd* cmd, int tick, float when );
 
+		void record_and_detect_stop( int tick, const systems::prediction::state& prestate );
+
 		bool m_pressed_this_tick{};
 		int m_command{};
+		int m_retries{};
+
+		// Last few commands while jump is held, dumped to the log when the speed collapses.
+		struct tick_sample
+		{
+			int tick{};
+			float speed{};
+			float vz{};
+			bool on_ground{};
+			bool pressed{};
+			bool strafed{};
+			bool braked{};
+		};
+		std::array<tick_sample, 8> m_history{};
+		int m_history_count{};
+		int m_last_stop_log_tick{ -1000 };
 		// Jump has been held since the air, so every press of this cycle is ours to time.
 		bool m_cycle{};
 		int m_ground_tick{ -1 };

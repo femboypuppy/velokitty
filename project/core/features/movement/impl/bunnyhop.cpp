@@ -24,9 +24,19 @@ namespace features::movement {
 		// sixteen) the stamp is the first slice end after the arc comes within 2 units, up to half a tick before
 		// the arc itself reaches the ground. A press just after that point always has a slice end at or before
 		// it and inside the window.
-		constexpr auto k_jump_penalty_ticks{ 1.0 };
-		constexpr auto k_press_margin_ticks{ 2.0 / 64.0 };
+		// A rejected press restarts the spam penalty, so retries spaced just past it lock the jump out for as long
+		// as they keep coming: 27 rejected retries in a row held a player on the ground until friction stopped
+		// them. The penalty is read from the server's convar, retries keep a clear margin past it, and after two
+		// misses in a row the gap triples so any chain of rejections is broken.
+		constexpr auto k_press_margin_ticks{ 8.0 / 64.0 };
+		constexpr auto k_retry_backoff_after{ 2 };
 		constexpr auto k_snap_distance{ 2.0f };
+
+		[[nodiscard]] double jump_penalty_ticks( )
+		{
+			const auto seconds = CONVAR ("sv_jump_spam_penalty_time")->get<float>( );
+			return std::fmax( static_cast< double >( seconds / cstypes::tick_interval ), 1.0 );
+		}
 
 		struct touchdown
 		{
@@ -153,18 +163,57 @@ namespace features::movement {
 
 	} // namespace
 
+	void bhop::record_and_detect_stop( int tick, const systems::prediction::state& prestate )
+	{
+		// Half the speed gone within the window, from a speed worth keeping, while jump is held: log the window
+		// so the cause (ground ticks, a missed press, a brake, a wall) is visible. At most once a second.
+		const auto size = static_cast< int >( this->m_history.size( ) );
+		const auto count = std::min( this->m_history_count, size );
+		if ( count < 4 || tick - this->m_last_stop_log_tick < 64 )
+		{
+			return;
+		}
+
+		auto peak{ 0.0f };
+		for ( auto i = 0; i < count; ++i )
+		{
+			peak = std::fmaxf( peak, this->m_history[ i ].speed );
+		}
+
+		const auto speed = prestate.networked_velocity.length_2d( );
+		if ( peak < 150.0f || speed > peak * 0.5f )
+		{
+			return;
+		}
+
+		this->m_last_stop_log_tick = tick;
+
+		std::string line{ "bhop stop: " };
+		for ( auto i = this->m_history_count - count; i < this->m_history_count; ++i )
+		{
+			const auto& s = this->m_history[ i % size ];
+			line += std::format( "[{} {} v={:.0f} vz={:.0f}{}{}{}] ",
+				s.tick, s.on_ground ? "ground" : "air", s.speed, s.vz,
+				s.pressed ? " press" : "", s.strafed ? " strafe" : "", s.braked ? " BRAKE" : "" );
+		}
+		line += std::format( "| retries={} penalty={:.2f}t", this->m_retries, jump_penalty_ticks( ) );
+		diag::write( diag::level::debug, line.c_str( ) );
+	}
+
 	void bhop::reset( )
 	{
 		this->m_cycle = false;
 		this->m_ground_tick = -1;
 		this->m_pending_tick = -1;
+		this->m_retries = 0;
+		this->m_history_count = 0;
 	}
 
 	bool bhop::press( systems::input::usercmd* cmd, int tick, float when )
 	{
 		// A press inside the spam penalty would be thrown away and would also restart the penalty, so it is
 		// never sent; the caller tries again on a later tick.
-		if ( static_cast< double >( tick ) + when - this->m_last_press <= k_jump_penalty_ticks )
+		if ( static_cast< double >( tick ) + when - this->m_last_press <= jump_penalty_ticks( ) )
 		{
 			return false;
 		}
@@ -185,6 +234,7 @@ namespace features::movement {
 	{
 		// One call per command, so this counts ticks in the command stream the presses are timed against.
 		const auto tick = ++this->m_command;
+		const auto pressed_last_tick = this->m_pressed_this_tick;
 		this->m_pressed_this_tick = false;
 
 		if ( !settings::g_movement.bhop.value )
@@ -229,6 +279,19 @@ namespace features::movement {
 
 		const auto& prestate = systems::g_prediction.pre( );
 
+		// The flags describe the previous command: strafer and auto stop have not run yet for this one.
+		this->m_history[ this->m_history_count % this->m_history.size( ) ] = {
+			.tick = tick,
+			.speed = prestate.networked_velocity.length_2d( ),
+			.vz = prestate.networked_velocity.z,
+			.on_ground = ( prestate.flags & cstypes::entity_flags::on_ground ) != 0,
+			.pressed = pressed_last_tick,
+			.strafed = features::movement::g_test_strafer.handled_this_tick( ),
+			.braked = features::combat::g_misc.autostop( ).braked_this_tick( ),
+		};
+		++this->m_history_count;
+		this->record_and_detect_stop( tick, prestate );
+
 		if ( prestate.flags & cstypes::entity_flags::on_ground )
 		{
 			g_diag.bhop_on_ground.fetch_add( 1, std::memory_order_relaxed );
@@ -269,7 +332,8 @@ namespace features::movement {
 				return;
 			}
 
-			auto when = static_cast< float >( this->m_last_press + k_jump_penalty_ticks + k_press_margin_ticks - static_cast< double >( tick ) );
+			const auto spacing = jump_penalty_ticks( ) * ( this->m_retries >= k_retry_backoff_after ? 3.0 : 1.0 ) + k_press_margin_ticks;
+			auto when = static_cast< float >( this->m_last_press + spacing - static_cast< double >( tick ) );
 			if ( tick == this->m_ground_tick + 1 )
 			{
 				when = std::fmaxf( when, 0.5f );
@@ -287,6 +351,7 @@ namespace features::movement {
 				this->m_hop.when = round_to_step( when );
 				this->m_hop.speed = prestate.networked_velocity.length_2d( );
 				this->m_hop.logged = false;
+				++this->m_retries;
 				g_diag.bhop_retry.fetch_add( 1, std::memory_order_relaxed );
 			}
 
@@ -299,6 +364,7 @@ namespace features::movement {
 		this->m_cycle = true;
 		this->m_ground_tick = -1;
 		this->m_pending_tick = -1;
+		this->m_retries = 0;
 
 		const auto movement_services = memory::read<std::uintptr_t>( local.pawn + SCHEMA( "C_BasePlayerPawn", "m_pMovementServices"_hash ) );
 		if ( !movement_services )
