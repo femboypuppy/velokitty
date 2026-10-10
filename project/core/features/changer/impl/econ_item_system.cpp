@@ -222,7 +222,7 @@ namespace features::changer {
 			item.used_by_classes = memory::read<std::uint32_t>( def_ptr + 0x368 );
 			item.rarity = memory::read<std::uint8_t>( def_ptr + 0x42 );
 
-			if ( const auto name_ptr = memory::read<std::uintptr_t>( def_ptr + 0x260 ); name_ptr )
+			if ( const auto name_ptr = memory::read<std::uintptr_t>( def_ptr + 0x248 ); name_ptr )
 			{
 				item.name = memory::read_string( name_ptr );
 				item.item_class = item.name;
