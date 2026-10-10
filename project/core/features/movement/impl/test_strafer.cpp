@@ -175,6 +175,14 @@ namespace features::movement {
 			return;
 		}
 
+		// Logs showed 96% of hops inside the bhop window with the strafer off and about 20% with it on: its
+		// steps in the landing command push the press out of the window. One tick without steering per hop.
+		if ( features::movement::g_bhop.pressed_this_tick( ) )
+		{
+			g_diag.strafer_yield.fetch_add( 1, std::memory_order_relaxed );
+			return;
+		}
+
 		const auto base = cmd->csgo_user_cmd.mutable_base( );
 		if ( !base )
 		{

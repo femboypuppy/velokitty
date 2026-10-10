@@ -177,6 +177,7 @@ namespace features::movement {
 
 		apply_landing_jump( base, when );
 		this->m_last_press = static_cast< double >( tick ) + when;
+		this->m_pressed_this_tick = true;
 		return true;
 	}
 
@@ -184,6 +185,7 @@ namespace features::movement {
 	{
 		// One call per command, so this counts ticks in the command stream the presses are timed against.
 		const auto tick = ++this->m_command;
+		this->m_pressed_this_tick = false;
 
 		if ( !settings::g_movement.bhop.value )
 		{

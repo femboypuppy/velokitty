@@ -8,7 +8,7 @@ namespace features::movement {
 	{
 		std::atomic<std::uint32_t> bhop_calls{}, bhop_autobhop_convar{}, bhop_no_jump_key{}, bhop_on_ground{}, bhop_air_jump_held{}, bhop_no_landing{}, bhop_scheduled{}, bhop_retry{};
 		std::atomic<std::uint32_t> airstrafe_calls{}, airstrafe_shift_air{}, airstrafe_off_or_firing{}, airstrafe_ground{}, airstrafe_sprint{}, airstrafe_ran{};
-		std::atomic<std::uint32_t> strafer_calls{}, strafer_inactive{}, strafer_ground{}, strafer_ran{};
+		std::atomic<std::uint32_t> strafer_calls{}, strafer_inactive{}, strafer_ground{}, strafer_ran{}, strafer_yield{};
 	};
 
 	inline diagnostics g_diag{};
@@ -17,10 +17,15 @@ namespace features::movement {
 	public:
 		void on_create_move( systems::input::usercmd* cmd );
 
+		/// A landing press went into this command. Strafers stay out of it: with their steps in the same
+		/// command the game no longer credits the press at its fraction, and the hop misses the window.
+		[[nodiscard]] bool pressed_this_tick( ) const { return this->m_pressed_this_tick; }
+
 	private:
 		void reset( );
 		[[nodiscard]] bool press( systems::input::usercmd* cmd, int tick, float when );
 
+		bool m_pressed_this_tick{};
 		int m_command{};
 		// Jump has been held since the air, so every press of this cycle is ours to time.
 		bool m_cycle{};

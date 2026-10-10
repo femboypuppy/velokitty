@@ -547,7 +547,7 @@ namespace hooks {
 			auto& movement_diag = features::movement::g_diag;
 			diag::writef(
 				diag::level::debug,
-				"movement: sv_autobunnyhopping=%d sv_quantize_movement_input=%d sv_subtick_movement_view_angles=%d speed2d=%.1f | bhop calls=%u autobhop_cvar=%u no_jump_key=%u on_ground=%u air_jump_held=%u no_landing=%u scheduled=%u retry=%u | airstrafe calls=%u shift_air=%u off_or_firing=%u ground=%u sprint=%u ran=%u | strafer calls=%u inactive=%u ground=%u ran=%u",
+				"movement: sv_autobunnyhopping=%d sv_quantize_movement_input=%d sv_subtick_movement_view_angles=%d speed2d=%.1f | bhop calls=%u autobhop_cvar=%u no_jump_key=%u on_ground=%u air_jump_held=%u no_landing=%u scheduled=%u retry=%u | airstrafe calls=%u shift_air=%u off_or_firing=%u ground=%u sprint=%u ran=%u | strafer calls=%u inactive=%u ground=%u ran=%u yield=%u",
 				CONVAR ("sv_autobunnyhopping")->get<bool>( ) ? 1 : 0,
 				CONVAR ("sv_quantize_movement_input")->get<bool>( ) ? 1 : 0,
 				CONVAR ("sv_subtick_movement_view_angles")->get<bool>( ) ? 1 : 0,
@@ -569,7 +569,8 @@ namespace hooks {
 				movement_diag.strafer_calls.exchange( 0, std::memory_order_relaxed ),
 				movement_diag.strafer_inactive.exchange( 0, std::memory_order_relaxed ),
 				movement_diag.strafer_ground.exchange( 0, std::memory_order_relaxed ),
-				movement_diag.strafer_ran.exchange( 0, std::memory_order_relaxed ) );		}
+				movement_diag.strafer_ran.exchange( 0, std::memory_order_relaxed ),
+				movement_diag.strafer_yield.exchange( 0, std::memory_order_relaxed ) );		}
 
 		if ( !pipeline_complete )
 		{

@@ -105,6 +105,12 @@ namespace features::movement {
 			return;
 		}
 
+		// Same as test_strafer: no steps of ours in a command carrying a bhop landing press.
+		if ( features::movement::g_bhop.pressed_this_tick( ) )
+		{
+			return;
+		}
+
 		if ( prestate.flags & cstypes::entity_flags::on_ground )
 		{
 			g_diag.airstrafe_ground.fetch_add( 1, std::memory_order_relaxed );
