@@ -470,9 +470,14 @@ namespace {
 
 		diag::step( "stage: econ" );
 		{
-			if ( !features::changer::g_econ_item_system.initialize( ) )
+			// The skin changer reads CS2's item schema through hand-found struct offsets, the first thing a
+			// game update breaks. Losing skins must not cost everything else, and every consumer goes through
+			// find_def/find_paint_kit, which return null on an empty or half-built index.
+			auto econ_ready{ false };
+			diag::guard( "init: econ", [ & ] { econ_ready = features::changer::g_econ_item_system.initialize( ); } );
+			if ( !econ_ready )
 			{
-				INIT_FAIL( "failed to initialize econ item system." );
+				diag::write( diag::level::warning, "econ item system unavailable; skin changer disabled until its offsets are updated" );
 			}
 		}
 
