@@ -1637,9 +1637,12 @@ namespace features::combat {
 			return;
 		}
 
+		const auto window = shared::lagcomp::backtrack_window( );
+
 		diag::writef(
 			diag::level::debug,
-			"rage: frames=%d cant_shoot=%d no_candidates=%d no_hit=%d targets=%d fired=%d | held: hitchance=%d (avg short by %.0f%%) duckpeek=%d brake=%d | autostop_frames=%d | avg hc on target=%.0f%% | ticks target->shot: avg=%.1f max=%d n=%d | scan: candidates=%d extrapolated=%d records=%d points=%d fov=%d no_damage=%d below_min=%d head_group=%d ok=%d best_dmg=%d",
+			"rage: unlag=%.3f ping=%.3f window=%.3f | frames=%d cant_shoot=%d no_candidates=%d no_hit=%d targets=%d fired=%d | held: hitchance=%d (avg short by %.0f%%) duckpeek=%d brake=%d | autostop_frames=%d | avg hc on target=%.0f%% | ticks target->shot: avg=%.1f max=%d n=%d | scan: candidates=%d extrapolated=%d records=%d points=%d fov=%d no_damage=%d below_min=%d head_group=%d ok=%d best_dmg=%d",
+			window.max_unlag, window.latency, window.budget,
 			d.frames, d.cant_shoot, d.no_candidates, d.no_hit, d.targets, d.fired,
 			d.held_hitchance, d.held_hitchance ? d.hc_short_sum / static_cast< float >( d.held_hitchance ) * 100.0f : 0.0f,
 			d.held_duck, d.held_brake, d.stop_frames,

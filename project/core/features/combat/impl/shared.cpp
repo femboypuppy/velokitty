@@ -523,36 +523,68 @@ namespace features::combat {
 			return false;
 		}
 
+		const auto window = backtrack_window( );
+		return window.ok && window.budget > 0.0f && this->simulation_time >= window.current_time - window.budget;
+	}
+
+	shared::lagcomp::window_info shared::lagcomp::backtrack_window( )
+	{
+		window_info out{};
+
 		const auto local_pawn = systems::g_local.get( ).pawn;
 		const auto net_channel = memory::call<std::uintptr_t>(PATTERN (patterns::get_net_channel), 0, 0 );
 		const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
 
 		if ( !local_pawn || !net_channel || !global_vars )
 		{
-			return false;
+			return out;
 		}
 
-		const auto max_unlag = [ ]
-			{
-				const auto server_limit = CONVAR ("sv_maxunlag")->get<float>( );
-				const auto player_limit = CONVAR ("sv_maxunlag_player")->get<float>( );
-				return player_limit > 0.0f ? std::min( server_limit, player_limit ) : server_limit;
-			}( );
+		const auto server_limit = CONVAR ("sv_maxunlag")->get<float>( );
+		const auto player_limit = CONVAR ("sv_maxunlag_player")->get<float>( );
+		out.max_unlag = player_limit > 0.0f ? std::min( server_limit, player_limit ) : server_limit;
+		out.current_time = memory::read<float>( global_vars + 0x30 );
+		out.latency = memory::call_vfunc<float>( net_channel, 10, 0 );
 
-		const auto current_time = memory::read<float>( global_vars + 0x30 );
-		const auto latency = memory::call_vfunc<float>( net_channel, 10, 0 );
-
-		if ( !std::isfinite( max_unlag ) || !std::isfinite( current_time ) ||
-			!std::isfinite( latency ) )
+		if ( !std::isfinite( out.max_unlag ) || !std::isfinite( out.current_time ) || !std::isfinite( out.latency ) )
 		{
-			return false;
+			return out;
 		}
 
 		// This value is the effective ping for the selected flow in this build;
 		// combining both flows double-counts latency and can erase the window.
-		const auto budget = max_unlag - std::max( latency, 0.0f );
+		out.budget = out.max_unlag - std::max( out.latency, 0.0f );
+		out.ok = true;
+		return out;
+	}
 
-		return budget > 0.0f && this->simulation_time >= current_time - budget;
+	bool shared::lagcomp::record::is_current( ) const
+	{
+		if ( !this->valid || !this->pawn )
+		{
+			return false;
+		}
+
+		// The newest record is the enemy where the server last told us it is. When the server allows no
+		// backtrack window (HvH servers set sv_maxunlag low, and with ping on top the budget goes negative),
+		// is_valid rejects even this one, and the ragebot had no target at all: 0 records for every enemy in
+		// the log, standing right in front of you. It stays a target as long as it is the pawn's live network
+		// state and fresh -- not a dormant player frozen where it was last seen.
+		const auto live_time = memory::read<float>( this->pawn + SCHEMA( "C_BaseEntity", "m_flSimulationTime"_hash ) );
+		if ( live_time != this->simulation_time )
+		{
+			return false;
+		}
+
+		const auto global_vars = memory::read<std::uintptr_t>( addresses::globals::global_vars );
+		if ( !global_vars )
+		{
+			return false;
+		}
+
+		constexpr auto k_max_age{ 0.25f };
+		const auto current_time = memory::read<float>( global_vars + 0x30 );
+		return std::isfinite( current_time ) && current_time - this->simulation_time <= k_max_age;
 	}
 
 	void shared::lagcomp::record::apply( )
@@ -662,7 +694,9 @@ namespace features::combat {
 				pending.push_back( { pawn, simulation_tick } );
 			}
 
-			while ( !records.empty( ) && !records.back( ).is_valid( ) )
+			// Older records go once they leave the backtrack window, but the newest stays while it is current:
+			// with no window at all this loop used to empty the list between network updates.
+			while ( !records.empty( ) && !records.back( ).is_valid( ) && !( records.size( ) == 1 && records.front( ).is_current( ) ) )
 			{
 				records.pop_back( );
 			}
@@ -799,6 +833,12 @@ namespace features::combat {
 
 		if ( result.empty( ) )
 		{
+			// No backtrack window: the enemy's current position is still a shot (see record::is_current).
+			if ( !it->second.empty( ) && it->second.front( ).is_current( ) )
+			{
+				result.push_back( &it->second.front( ) );
+			}
+
 			return result;
 		}
 

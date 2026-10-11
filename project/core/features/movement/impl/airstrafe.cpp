@@ -85,6 +85,15 @@ namespace features::movement {
 		const auto& prestate = systems::g_prediction.pre( );
 		const bool in_air = !( prestate.flags & cstypes::entity_flags::on_ground );
 
+		if ( in_air )
+		{
+			const auto speed = static_cast< std::uint32_t >( prestate.networked_velocity.length_2d( ) );
+			auto seen = g_diag.air_max_speed.load( std::memory_order_relaxed );
+			while ( speed > seen && !g_diag.air_max_speed.compare_exchange_weak( seen, speed, std::memory_order_relaxed ) )
+			{
+			}
+		}
+
 		if ( shift_held && in_air )
 		{
 			g_diag.airstrafe_shift_air.fetch_add( 1, std::memory_order_relaxed );

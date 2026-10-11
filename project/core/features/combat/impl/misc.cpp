@@ -66,6 +66,46 @@ namespace features::combat {
 
 				cmd->buttons.value = buttons;
 			}
+		/// For each axis, the largest movement value any analog step in the chain reaches, with its sign. The key
+		/// mask is one per command but the chain changes direction inside it (airstrafe flips side every step),
+		/// so keys built from the chain's last value alone can leave out an axis the earlier steps use, and the
+		/// game discards that axis for the whole command.
+		[[nodiscard]] math::vector2 chain_extent( proto::base_usercmd_pb* base, math::vector2 total )
+		{
+			math::vector2 extent{};
+
+			for ( auto i = 0; i < base->subtick_moves_size( ); ++i )
+			{
+				const auto step = base->mutable_subtick_moves( i );
+				if ( !step )
+				{
+					continue;
+				}
+
+				if ( step->m_has_bits.test( 0x8 ) )
+				{
+					total.x += step->analog_forward_delta( );
+				}
+
+				if ( step->m_has_bits.test( 0x10 ) )
+				{
+					total.y += step->analog_left_delta( );
+				}
+
+				if ( std::fabsf( total.x ) > std::fabsf( extent.x ) )
+				{
+					extent.x = total.x;
+				}
+
+				if ( std::fabsf( total.y ) > std::fabsf( extent.y ) )
+				{
+					extent.y = total.y;
+				}
+			}
+
+			return extent;
+		}
+
 		/// The command tick, read the same way `get_mode_offset` reads it. Used to tell "the first
 		/// CreateMove of this tick" from "the fourth", which the correction has to know: it is a
 		/// per-frame callback applying a per-tick rotation.
@@ -773,6 +813,15 @@ namespace features::combat {
 				base->set_leftmove( side_move );
 			}
 
+			// The keys still have to cover the chain. Airstrafe writes its strafe as analog steps and leaves the
+			// keys as the player pressed them, so with anti-aim off (no rotation, so no sync below) and only jump
+			// held, the game dropped every step for want of a direction key: airstrafe moved nothing at all.
+			if ( systems::g_input.has_move_subticks( base ) )
+			{
+				const auto& start = systems::g_prediction.pre( ).last_movement_impulses;
+				sync_movement_buttons( cmd, chain_extent( base, math::vector2{ start.x, start.y } ), this->m_left_key_sign );
+			}
+
 			this->m_corrected_tick = -1;
 			this->m_dbg_state = correction_state::no_delta;
 			return;
@@ -820,7 +869,8 @@ namespace features::combat {
 
 		// What the server will actually end up with: the chain's total when a step carries the wish direction,
 		// otherwise the rotated pair, which input::apply turns into a fallback step.
-		sync_movement_buttons( cmd, systems::g_input.has_move_subticks( base ) ? rotated_total : scaled, this->m_left_key_sign );
+		( void )rotated_total;
+		sync_movement_buttons( cmd, systems::g_input.has_move_subticks( base ) ? chain_extent( base, math::vector2{ impulses.x, impulses.y } ) : scaled, this->m_left_key_sign );
 
 		// The buttons are rewritten last, by sync_movement_buttons above, and only once every feature that reads
 		// them for the player's real intent (airstrafe, test_strafer) has already run -- the correction is the

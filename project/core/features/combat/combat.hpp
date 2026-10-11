@@ -36,11 +36,26 @@ namespace features::combat {
 				bool extrapolated{};
 
 				bool setup( std::uintptr_t pawn );
+				/// Inside the server's backtrack window.
 				[[nodiscard]] bool is_valid( ) const;
+				/// The pawn's live network state and recent: shootable even when the window is empty.
+				[[nodiscard]] bool is_current( ) const;
 
 				void apply( );
 				void restore( );
 			};
+
+			struct window_info
+			{
+				float max_unlag{};
+				float latency{};
+				float current_time{};
+				/// max_unlag minus latency: how far back a record may be and still be compensated.
+				float budget{};
+				bool ok{};
+			};
+
+			[[nodiscard]] static window_info backtrack_window( );
 
 			struct visual_record
 			{

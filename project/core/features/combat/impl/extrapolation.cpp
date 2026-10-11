@@ -101,7 +101,7 @@ namespace features::combat {
 		}
 
 		const auto& latest = it->second.front( );
-		if ( !latest.is_valid( ) )
+		if ( !latest.is_valid( ) && !latest.is_current( ) )
 		{
 			return std::nullopt;
 		}
