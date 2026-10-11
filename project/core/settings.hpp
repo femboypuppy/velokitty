@@ -1316,6 +1316,10 @@ namespace settings {
 		xui::setting custom_model{ false, {}, "custom model", "changer" };
 		config::str custom_model_file{ "", "changer", "custom model file" };
 
+		/// The music_definitions id from items_game.txt; 0 is "none". Local only, like everything here.
+		xui::setting music_kit{ false, {}, "music kit", "changer" };
+		config::val<int> music_kit_id{ 0, "changer", "music kit id" };
+
 		changer( )
 		{
 			config::detail::register_field( { .key = config::detail::make_key( "changer", "applied skins" ), .type = config::field_type::custom, .ptr = &skins, .count = 1 } );

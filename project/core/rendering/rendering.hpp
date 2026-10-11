@@ -239,7 +239,7 @@ namespace rendering {
             { { "pistol", "smg", "rifle", "shotgun", "sniper", "lmg" }, 6 },
             { { "enemies", "allies", "local" },                         3 },
             { { "esp", "scene", "weather" },                            3 },
-            { { "guns", "knives", "gloves", "agents", "models" },       5 },
+            { { "guns", "knives", "gloves", "agents", "models", "music" }, 6 },
             { { "main", "removals", "camera", "hud" },                  4 },
             { { "general" },                                            1 },
             { { "colors", "visuals", "layout" },                        3 }

@@ -94,6 +94,7 @@ namespace features {
 		inline agents g_agents{};
 		inline custom_models g_custom_models{};
 		inline gloves g_gloves{};
+		inline music_kits g_music_kits{};
 		inline guns g_guns{};
 		inline knives g_knives{};
 

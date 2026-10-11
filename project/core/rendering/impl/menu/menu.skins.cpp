@@ -1536,6 +1536,118 @@ namespace rendering {
 			xui::end_child( );
 		}
 
+		[[nodiscard]] static bool contains_ignore_case( std::string_view haystack, std::string_view needle )
+		{
+			if ( needle.empty( ) )
+			{
+				return true;
+			}
+
+			const auto it = std::ranges::search( haystack, needle, [ ]( char a, char b )
+			{
+				return std::tolower( static_cast< unsigned char >( a ) ) == std::tolower( static_cast< unsigned char >( b ) );
+			} );
+
+			return !it.empty( );
+		}
+
+		/// The music kit page. A list like the models page: a kit's icon is a square album cover, which the
+		/// weapon card grid would stretch, and the name is what people actually search for.
+		static void draw_music_kits( float content_w, float content_h )
+		{
+			auto& econ = features::changer::g_econ_item_system;
+			auto& changer = settings::g_changer;
+			auto& dl = xui::draw::current( );
+			const auto& input = xui::ctx( ).input;
+
+			if ( !xui::begin_child( "##music_panel", content_w, content_h, false ) )
+			{
+				return;
+			}
+
+			xui::checkbox( "enable music kit", changer.music_kit );
+
+			static std::string filter{};
+			xui::text_input( "##music_search", filter, 64, "search music kits..." );
+
+			const auto& kits = econ.music_kits( );
+			const auto [ avail_w, avail_h ] = xui::layout::avail( );
+			const auto list_h = std::max( 90.0f, avail_h - 40.0f );
+
+			constexpr auto row_h{ 44.0f };
+			constexpr auto icon_pad{ 4.0f };
+
+			if ( xui::begin_child( "##music_list", avail_w, list_h, true ) )
+			{
+				const auto row_w = xui::layout::avail( ).first;
+				auto visible{ 0 };
+
+				for ( auto i = 0; i < static_cast< int >( kits.size( ) ); ++i )
+				{
+					const auto& kit = kits[ i ];
+					if ( !contains_ignore_case( kit.localized_name, filter ) && !contains_ignore_case( kit.name, filter ) )
+					{
+						continue;
+					}
+
+					const auto row = xui::layout::item( row_w, row_h );
+					const auto is_selected = changer.music_kit_id.value == kit.id;
+					const auto is_hovered = input.in_rect( row );
+
+					if ( is_hovered && input.mouse_clicked && !xui::ctx( ).overlay_blocking( ) )
+					{
+						// Clicking the equipped kit again unequips it, same as the models page.
+						changer.music_kit_id.value = is_selected ? 0 : kit.id;
+						changer.music_kit.value = changer.music_kit.value || !is_selected;
+					}
+
+					const auto hover_anim = xui::anim::lerp( xui::fnv1a( "musicrow" ) + i, is_hovered ? 1.0f : 0.0f, 14.0f );
+					const auto sel_anim = xui::anim::lerp( xui::fnv1a( "musicsel" ) + i, is_selected ? 1.0f : 0.0f, 10.0f );
+
+					if ( sel_anim > 0.01f )
+					{
+						dl.rect_filled( row.x, row.y, row.w, row.h, tokens::col_accent.alpha( static_cast< std::uint8_t >( 70.0f * sel_anim ) ), xdraw::corner_radius{ 6.0f } );
+					}
+					else if ( hover_anim > 0.01f )
+					{
+						dl.rect_filled( row.x, row.y, row.w, row.h, tokens::col_elevated.alpha( static_cast< std::uint8_t >( 255.0f * hover_anim * 0.5f ) ), xdraw::corner_radius{ 6.0f } );
+					}
+
+					const auto icon_size = row_h - icon_pad * 2.0f;
+					if ( const auto img = econ.get_skin_image( kit.image_inventory ) )
+					{
+						dl.image( row.x + icon_pad, row.y + icon_pad, icon_size, icon_size, img->srv.Get( ), xdraw::color{ 255, 255, 255, 255 } );
+					}
+
+					const auto text_col = is_selected
+						? xui::lerp( tokens::col_text, tokens::col_accent, sel_anim )
+						: xui::lerp( tokens::col_text_dim, tokens::col_text, hover_anim );
+
+					const auto [ nw, nh ] = xdraw::measure_text( kit.localized_name );
+					dl.text( row.x + icon_size + icon_pad * 3.0f, row.y + ( row.h - nh ) * 0.5f, kit.localized_name, text_col );
+
+					const auto id_text = std::format( "#{}", kit.id );
+					const auto [ iw, ih ] = xdraw::measure_text( id_text );
+					dl.text( row.x + row.w - iw - 10.0f, row.y + ( row.h - ih ) * 0.5f, id_text, tokens::col_text_dim );
+
+					visible++;
+				}
+
+				if ( visible == 0 )
+				{
+					const auto row = xui::layout::item( row_w, row_h );
+					dl.text( row.x + 10.0f, row.y + 12.0f, kits.empty( ) ? "music kits did not load - check velocity_init.log" : "no matches", tokens::col_text_dim );
+				}
+
+				xui::end_child( );
+			}
+
+			const auto* equipped = econ.find_music_kit( changer.music_kit_id.value );
+			xui::text( equipped ? std::format( "equipped: {}  (plays for your MVPs, only on your screen)", equipped->localized_name ) : std::string{ "equipped: none" }, tokens::col_text_dim );
+
+			xui::end_child( );
+		}
+
 	} // namespace detail
 
 	void menu::draw_skins( float group_w ) const
@@ -1582,6 +1694,12 @@ namespace rendering {
 		if ( this->m_subtab == 4 )
 		{
 			detail::draw_custom_models( content_w, body_h );
+			return;
+		}
+
+		if ( this->m_subtab == 5 )
+		{
+			detail::draw_music_kits( content_w, body_h );
 			return;
 		}
 

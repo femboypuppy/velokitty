@@ -77,6 +77,16 @@ namespace features::changer {
 			int height{};
 		};
 
+		/// One entry of items_game.txt's music_definitions. Read from the file rather than from the
+		/// in-memory schema: a text file in the VPK has no struct offsets for an update to move.
+		struct music_kit_def
+		{
+			int id{};
+			std::string name{};
+			std::string localized_name{};
+			std::string image_inventory{};
+		};
+
 		[[nodiscard]] bool initialize( );
 
 		[[nodiscard]] const std::vector<paint_kit>& paint_kits( ) const { return this->m_paint_kits; }
@@ -87,8 +97,10 @@ namespace features::changer {
 		[[nodiscard]] const std::vector<const item_def*>& agents( ) const { return this->m_agents; }
 		[[nodiscard]] const std::vector<const item_def*>& guns( ) const { return this->m_guns; }
 		[[nodiscard]] const std::vector<skin_entry>& skins( ) const { return this->m_skins; }
+		[[nodiscard]] const std::vector<music_kit_def>& music_kits( ) const { return this->m_music_kits; }
 
 		[[nodiscard]] const item_def* find_def( std::int16_t def_index ) const;
+		[[nodiscard]] const music_kit_def* find_music_kit( int id ) const;
 		[[nodiscard]] const paint_kit* find_paint_kit( int id ) const;
 		[[nodiscard]] const skin_image* get_skin_image( const std::string& image_inventory );
 		[[nodiscard]] const skin_image* get_skin_image( std::int16_t def_index, int paint_kit_id );
@@ -123,6 +135,7 @@ namespace features::changer {
 		void resolve_localized_names( );
 		bool build_vpk_index( );
 		void build_skin_index( );
+		bool parse_music_kits( );
 
 		void request_decode( const std::string& image_inventory );
 		bool finalize_texture( image_entry& entry );
@@ -140,6 +153,7 @@ namespace features::changer {
 		std::vector<const item_def*> m_agents{};
 		std::vector<const item_def*> m_guns{};
 		std::vector<skin_entry> m_skins{};
+		std::vector<music_kit_def> m_music_kits{};
 
 		std::unordered_map<std::int16_t, std::size_t> m_def_index_map{};
 		std::unordered_map<int, std::size_t> m_paint_kit_map{};
@@ -379,6 +393,20 @@ namespace features::changer {
 		/// and `set_player_model` with a path whose content is no longer precached is the "render with
 		/// error material" fatal box, not a missing texture.
 		std::uint32_t m_seen_generation{};
+	};
+
+	/// Overrides the music kit on the local controller's inventory services. The MVP anthem and the
+	/// round-end panel read it from there; the value is the networked copy on this machine only, so the
+	/// server and other players never see it. Restores the original when the feature is switched off.
+	class music_kits
+	{
+	public:
+		void on_frame_stage_notify( );
+
+	private:
+		std::uintptr_t m_tracked_services{};
+		std::uint16_t m_original{};
+		bool m_overridden{};
 	};
 
 	class gloves

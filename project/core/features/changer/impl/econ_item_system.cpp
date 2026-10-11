@@ -4,9 +4,88 @@
 #include <utilities/logging/logging.hpp>
 #include <utilities/threadpool/threadpool.hpp>
 #include <utilities/game_path.hpp>
+#include <utilities/diag.hpp>
+#include <charconv>
 #include "../changer.hpp"
 
 namespace features::changer {
+
+	namespace {
+
+		/// Just enough KeyValues to walk items_game.txt: quoted strings and braces. Comments and stray
+		/// unquoted tokens (platform conditionals) are skipped; none of the blocks read with it need them.
+		class kv_tokenizer
+		{
+		public:
+			enum class token : std::uint8_t { string, open, close, end };
+
+			kv_tokenizer( std::string_view text, std::size_t start ) : m_text{ text }, m_pos{ start } {}
+
+			token next( std::string_view& out )
+			{
+				while ( this->m_pos < this->m_text.size( ) )
+				{
+					const auto c = this->m_text[ this->m_pos ];
+
+					if ( c == '"' )
+					{
+						const auto close = this->m_text.find( '"', this->m_pos + 1 );
+						if ( close == std::string_view::npos )
+						{
+							this->m_pos = this->m_text.size( );
+							return token::end;
+						}
+
+						out = this->m_text.substr( this->m_pos + 1, close - this->m_pos - 1 );
+						this->m_pos = close + 1;
+						return token::string;
+					}
+
+					if ( c == '{' || c == '}' )
+					{
+						++this->m_pos;
+						return c == '{' ? token::open : token::close;
+					}
+
+					if ( c == '/' && this->m_pos + 1 < this->m_text.size( ) && this->m_text[ this->m_pos + 1 ] == '/' )
+					{
+						const auto eol = this->m_text.find( '\n', this->m_pos );
+						this->m_pos = eol == std::string_view::npos ? this->m_text.size( ) : eol;
+						continue;
+					}
+
+					++this->m_pos;
+				}
+
+				return token::end;
+			}
+
+			/// Consumes everything up to the brace matching one that was just read.
+			bool skip_block( )
+			{
+				auto depth{ 1 };
+				std::string_view ignored{};
+
+				while ( depth > 0 )
+				{
+					switch ( this->next( ignored ) )
+					{
+					case token::open: ++depth; break;
+					case token::close: --depth; break;
+					case token::end: return false;
+					default: break;
+					}
+				}
+
+				return true;
+			}
+
+		private:
+			std::string_view m_text{};
+			std::size_t m_pos{};
+		};
+
+	} // namespace
 
 	bool econ_item_system::initialize( )
 	{
@@ -76,6 +155,14 @@ namespace features::changer {
 
 		this->build_skin_index( );
 
+		// Music kits are an extra, not a reason to lose every skin: a missing or reshaped items_game.txt
+		// costs only the music page.
+		if ( !this->parse_music_kits( ) )
+		{
+			logging::console::print( xs( "[econ] music kits unavailable" ) );
+			diag::write( diag::level::warning, "econ: no music kits parsed from scripts/items/items_game.txt" );
+		}
+
 		return true;
 	}
 
@@ -88,6 +175,12 @@ namespace features::changer {
 		}
 
 		return &this->m_item_defs[ it->second ];
+	}
+
+	const econ_item_system::music_kit_def* econ_item_system::find_music_kit( int id ) const
+	{
+		const auto it = std::ranges::find( this->m_music_kits, id, &music_kit_def::id );
+		return it != this->m_music_kits.end( ) ? &*it : nullptr;
 	}
 
 	const econ_item_system::paint_kit* econ_item_system::find_paint_kit( int id ) const
@@ -558,6 +651,17 @@ namespace features::changer {
 
 					if ( !is_econ )
 					{
+						// The one non-image file the changer reads: music kit definitions.
+						if ( extension == xs( "txt" ) && dir_path == xs( "scripts/items" ) && filename == xs( "items_game" ) )
+						{
+							this->m_vpk_index[ std::string( xs( "scripts/items/items_game.txt" ) ) ] = vpk_file_entry
+							{
+								entry.archive_index,
+								entry.entry_offset,
+								entry.entry_length
+							};
+						}
+
 						continue;
 					}
 
@@ -642,6 +746,114 @@ namespace features::changer {
 
 			this->m_skins.push_back( { def_idx, pk_it->second } );
 		}
+	}
+
+	bool econ_item_system::parse_music_kits( )
+	{
+		std::vector<std::byte> raw{};
+		{
+			std::lock_guard lock( this->m_vpk_mutex );
+			raw = this->read_vpk( std::string( xs( "scripts/items/items_game.txt" ) ) );
+		}
+
+		if ( raw.empty( ) )
+		{
+			return false;
+		}
+
+		const std::string_view text( reinterpret_cast< const char* >( raw.data( ) ), raw.size( ) );
+
+		// items_game.txt carries one music_definitions block per content drop (thirty-odd of them), so every
+		// occurrence is walked, not just the first.
+		constexpr std::string_view block_key{ "\"music_definitions\"" };
+
+		for ( auto at = text.find( block_key ); at != std::string_view::npos; at = text.find( block_key, at + block_key.size( ) ) )
+		{
+			kv_tokenizer tokens{ text, at + block_key.size( ) };
+			std::string_view id_text{};
+
+			if ( tokens.next( id_text ) != kv_tokenizer::token::open )
+			{
+				continue;
+			}
+
+			// Each entry is "<id>" { key value ... }; the loop ends on the block's closing brace.
+			while ( tokens.next( id_text ) == kv_tokenizer::token::string )
+			{
+				std::string_view value{};
+				if ( tokens.next( value ) != kv_tokenizer::token::open )
+				{
+					break;
+				}
+
+				music_kit_def kit{};
+				std::from_chars( id_text.data( ), id_text.data( ) + id_text.size( ), kit.id );
+
+				std::string loc_token{};
+				std::string_view key{};
+
+				while ( tokens.next( key ) == kv_tokenizer::token::string )
+				{
+					const auto kind = tokens.next( value );
+					if ( kind == kv_tokenizer::token::open )
+					{
+						if ( !tokens.skip_block( ) )
+						{
+							break;
+						}
+
+						continue;
+					}
+
+					if ( kind != kv_tokenizer::token::string )
+					{
+						break;
+					}
+
+					if ( key == "name" )
+					{
+						kit.name = value;
+					}
+					else if ( key == "loc_name" )
+					{
+						loc_token = value;
+					}
+					else if ( key == "image_inventory" )
+					{
+						kit.image_inventory = value;
+					}
+				}
+
+				if ( kit.id <= 0 || kit.name.empty( ) || this->find_music_kit( kit.id ) )
+				{
+					continue;
+				}
+
+				if ( !loc_token.empty( ) )
+				{
+					const auto localized = memory::call_vfunc<const char*>( addresses::globals::localize, 17, loc_token.c_str( ) );
+					if ( localized && *localized && std::strcmp( localized, loc_token.c_str( ) ) != 0 )
+					{
+						kit.localized_name = localized;
+					}
+				}
+
+				if ( kit.localized_name.empty( ) )
+				{
+					kit.localized_name = kit.name;
+				}
+
+				this->m_music_kits.push_back( std::move( kit ) );
+			}
+		}
+
+		std::ranges::sort( this->m_music_kits, [ ]( const music_kit_def& a, const music_kit_def& b )
+		{
+			return a.id < b.id;
+		} );
+
+		diag::writef( diag::level::info, "econ: %zu music kits", this->m_music_kits.size( ) );
+		return !this->m_music_kits.empty( );
 	}
 
 	void econ_item_system::request_decode( const std::string& image_inventory )

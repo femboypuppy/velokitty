@@ -143,6 +143,7 @@
     <ClCompile Include="project\core\features\changer\impl\agents.cpp" />
     <ClCompile Include="project\core\features\changer\impl\custom_models.cpp" />
     <ClCompile Include="project\core\features\changer\impl\gloves.cpp" />
+    <ClCompile Include="project\core\features\changer\impl\music_kits.cpp" />
     <ClCompile Include="project\core\features\changer\impl\guns.cpp" />
     <ClCompile Include="project\core\features\changer\impl\econ_item_system.cpp" />
     <ClCompile Include="project\core\features\changer\impl\knives.cpp" />

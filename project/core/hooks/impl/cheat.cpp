@@ -267,6 +267,7 @@ namespace hooks {
 				diag::guard( "frame_stage_notify: agents", [ ] { features::changer::g_agents.on_frame_stage_notify( ); } );
 				diag::guard( "frame_stage_notify: gloves", [ ] { features::changer::g_gloves.on_frame_stage_notify( ); } );
 				diag::guard( "frame_stage_notify: knives", [ ] { features::changer::g_knives.on_frame_stage_notify( ); } );
+				diag::guard( "frame_stage_notify: music kits", [ ] { features::changer::g_music_kits.on_frame_stage_notify( ); } );
 
 				diag::set_exception_phase( "frame_stage_notify: world and misc" );
 				diag::guard( "frame_stage_notify: scene", [ ] { features::world::g_scene.on_frame_stage_notify( ); } );
