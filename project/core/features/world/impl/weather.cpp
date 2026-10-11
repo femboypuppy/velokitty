@@ -94,6 +94,20 @@ namespace features::world {
 		case settings::world::weather::weather_type::stars:
 			particle_path = xs( "particles/embedded/stars.vpcf" );
 			break;
+		// The rest ship in pak01 under particles/rain_fx -- Valve's own camera-following precipitation, so
+		// they load through the resource system like any game particle and need nothing embedded.
+		case settings::world::weather::weather_type::ash:
+			particle_path = xs( "particles/rain_fx/ash.vpcf" );
+			break;
+		case settings::world::weather::weather_type::burning_ash:
+			particle_path = xs( "particles/rain_fx/ash_burning.vpcf" );
+			break;
+		case settings::world::weather::weather_type::storm:
+			particle_path = xs( "particles/rain_fx/rain_storm.vpcf" );
+			break;
+		case settings::world::weather::weather_type::leaf_storm:
+			particle_path = xs( "particles/rain_fx/rain_storm_leaves.vpcf" );
+			break;
 		default:
 			return;
 		}
@@ -161,7 +175,12 @@ namespace features::world {
 
 		const auto origin = memory::read<math::vector3>( game_scene_node + SCHEMA( "CGameSceneNode", "m_vecAbsOrigin"_hash ) );
 		const auto& weather = settings::g_world.m_weather;
-		if ( weather.type.value == settings::world::weather::weather_type::rain && weather.wind.value )
+		using weather_type = settings::world::weather::weather_type;
+		const auto falls_in_wind = weather.type.value == weather_type::rain
+			|| weather.type.value == weather_type::storm
+			|| weather.type.value == weather_type::leaf_storm;
+
+		if ( falls_in_wind && weather.wind.value )
 		{
 			const auto direction = weather.wind_direction.value * ( std::numbers::pi_v<float> / 180.0f );
 			const auto strength = std::clamp( weather.wind_strength.value / 5.0f, 0.0f, 1.0f );

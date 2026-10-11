@@ -305,10 +305,14 @@ namespace rendering {
 				xui::checkbox( "weather", weather.enabled );
 				if ( xui::begin_popup( "##weather_popup", 220.0f ) )
 				{
-					constexpr const char* weather_types[ ]{ "snow", "rain", "stars" };
-					xui::combo( "type", weather.type.value, weather_types, 3 );
+					constexpr const char* weather_types[ ]{ "snow", "rain", "stars", "ash", "burning ash", "storm", "leaf storm" };
+					xui::combo( "type", weather.type.value, weather_types, static_cast< int >( std::size( weather_types ) ) );
 
-					xui::color_picker( "color##weather", weather.color );
+					// Only our embedded particles read the tint; the game's rain_fx systems ignore it.
+					if ( weather.type.value <= settings::world::weather::weather_type::stars )
+					{
+						xui::color_picker( "color##weather", weather.color );
+					}
 					xui::end_popup( );
 				}
 

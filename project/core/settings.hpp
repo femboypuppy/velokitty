@@ -1634,7 +1634,9 @@ namespace settings {
 	{
 		struct weather
 		{
-			enum class weather_type : std::uint8_t { snow, rain, stars };
+			/// Append only: configs store the index. The first three are our own embedded particles; the rest are
+			/// the game's rain_fx systems, so the color picker only tints the first three.
+			enum class weather_type : std::uint8_t { snow, rain, stars, ash, burning_ash, storm, leaf_storm };
 
 			xui::setting enabled{ true, {}, "weather", "weather" };
 			config::enm<weather_type> type{ weather_type::snow, "weather", "type" };
