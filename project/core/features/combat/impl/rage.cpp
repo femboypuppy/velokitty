@@ -1641,7 +1641,8 @@ namespace features::combat {
 
 		diag::writef(
 			diag::level::debug,
-			"rage: unlag=%.3f ping=%.3f window=%.3f | frames=%d cant_shoot=%d no_candidates=%d no_hit=%d targets=%d fired=%d | held: hitchance=%d (avg short by %.0f%%) duckpeek=%d brake=%d | autostop_frames=%d | avg hc on target=%.0f%% | ticks target->shot: avg=%.1f max=%d n=%d | scan: candidates=%d extrapolated=%d records=%d points=%d fov=%d no_damage=%d below_min=%d head_group=%d ok=%d best_dmg=%d",
+			"rage: ffa=%d unlag=%.3f ping=%.3f window=%.3f | frames=%d cant_shoot=%d no_candidates=%d no_hit=%d targets=%d fired=%d | held: hitchance=%d (avg short by %.0f%%) duckpeek=%d brake=%d | autostop_frames=%d | avg hc on target=%.0f%% | ticks target->shot: avg=%.1f max=%d n=%d | scan: candidates=%d extrapolated=%d records=%d points=%d fov=%d no_damage=%d below_min=%d head_group=%d ok=%d best_dmg=%d",
+			systems::g_local.get( ).is_team_mode ? 0 : 1,
 			window.max_unlag, window.latency, window.budget,
 			d.frames, d.cant_shoot, d.no_candidates, d.no_hit, d.targets, d.fired,
 			d.held_hitchance, d.held_hitchance ? d.hc_short_sum / static_cast< float >( d.held_hitchance ) * 100.0f : 0.0f,
@@ -2127,8 +2128,15 @@ namespace features::combat {
 		const auto punched_aim = math::vector3{ aim_angle.x - aim_punch.x, aim_angle.y - aim_punch.y, 0.0f };
 		const auto facing_away = forward.dot( ( tgt.hit.record->origin - systems::g_prediction.pre( ).networked_origin ).normalized( ) ) < 0.707107f;
 
+		// With sv_subtick_movement_view_angles 0 (HvH servers) the server takes the bullet's direction from the input
+		// history but its spread from the command's own angles. Hide-shots flipped those, and the roll was never in
+		// them, so every no-spread shot there was solved for one seed and fired on another: misses up to the whole
+		// cone with the inaccuracy predicted exactly. On such a server the command carries the exact shot angles.
+		const auto subtick_view_angles = CONVAR ("sv_subtick_movement_view_angles");
+		const auto command_must_match = config.no_spread.value && subtick_view_angles && !subtick_view_angles->get<bool>( );
+
 		auto command_aim = punched_aim;
-		if ( !subtick_attack && facing_away && settings::g_combat.m_antiaim.hide_shots.value )
+		if ( !command_must_match && !subtick_attack && facing_away && settings::g_combat.m_antiaim.hide_shots.value )
 		{
 			command_aim.x = 179.9f;
 			command_aim.y = std::remainderf( punched_aim.y + 180.0f, 360.0f );
@@ -2138,6 +2146,11 @@ namespace features::combat {
 		{
 			angles->set_x( command_aim.x );
 			angles->set_y( command_aim.y );
+
+			if ( command_must_match )
+			{
+				angles->set_z( aim_angle.z - aim_punch.z );
+			}
 		}
 
 		if ( !config.silent.value )

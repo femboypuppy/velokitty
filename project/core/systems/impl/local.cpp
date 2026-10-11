@@ -87,7 +87,12 @@ namespace systems {
 		{
 			const auto game_type = CONVAR ("game_type")->get<int> ();
 			const auto game_mode = CONVAR ("game_mode")->get<int>( );
-			const auto is_ffa = ( game_type == 1 && game_mode == 2 ) || ( game_type == 2 && game_mode == 0 );
+			// mp_teammates_are_enemies is what actually makes a server free-for-all; deathmatch and arms race
+			// only switch it on by default. HvH servers run FFA on ordinary modes through the cvar, and reading
+			// the mode alone treated half the server as teammates: the ragebot ignored enemies standing in front
+			// of you because they wore your team number.
+			const auto teammates_are_enemies = CONVAR ("mp_teammates_are_enemies");
+			const auto is_ffa = ( teammates_are_enemies && teammates_are_enemies->get<bool>( ) ) || ( game_type == 1 && game_mode == 2 ) || ( game_type == 2 && game_mode == 0 );
 
 			s.is_team_mode = !is_ffa;
 

@@ -55,6 +55,15 @@ namespace features::combat {
 		ctx.target_armor = memory::read<int>( target_pawn + SCHEMA( "C_CSPlayerPawn", "m_ArmorValue"_hash ) );
 		ctx.target_team = memory::read<int>( target_pawn + SCHEMA( "C_BaseEntity", "m_iTeamNum"_hash ) );
 
+		// The bullet simulation is the game's, and it deals nothing to a player on the shooter's team. In
+		// free-for-all the target can wear our team number, so every point on it came back as no damage.
+		// Simulate as the other side for those targets.
+		const auto local = systems::g_local.get( );
+		if ( !local.is_team_mode && ctx.target_team == local.team )
+		{
+			ctx.sim_team = local.team == 2 ? 3 : 2;
+		}
+
 		if ( ctx.target_armor > 0 )
 		{
 			const auto services = memory::read<std::uintptr_t>( target_pawn + SCHEMA( "C_BasePlayerPawn", "m_pItemServices"_hash ) );
@@ -132,7 +141,8 @@ namespace features::combat {
 
 		// Same cap as the setup above. If the two disagree the engine walks fewer surfaces than
 		// were collected and the extra layers are silently dead.
-		memory::call<void> (PATTERN (patterns::trace_bullet), trace, this->m_weapon_data.damage, this->m_weapon_data.penetration, this->m_weapon_data.range_modifier, ctx.max_layers, local_team, static_cast<std::uintptr_t>(0));
+		const auto sim_team = ctx.sim_team >= 0 ? ctx.sim_team : local_team;
+		memory::call<void> (PATTERN (patterns::trace_bullet), trace, this->m_weapon_data.damage, this->m_weapon_data.penetration, this->m_weapon_data.range_modifier, ctx.max_layers, sim_team, static_cast<std::uintptr_t>(0));
 
 		auto actual_hitbox{ -1 };
 		auto closest_hitbox_fraction{ 1.0f };

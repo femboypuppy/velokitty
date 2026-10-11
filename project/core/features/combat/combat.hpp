@@ -182,6 +182,8 @@ namespace features::combat {
 				// weapon group's penetration_layers by prepare_target; the default matches the
 				// value that used to be hardcoded at both trace call sites.
 				int max_layers{ 4 };
+				// Team the bullet is simulated as; -1 uses the shooter's. Set for free-for-all targets on our team.
+				int sim_team{ -1 };
 			};
 
 			struct result

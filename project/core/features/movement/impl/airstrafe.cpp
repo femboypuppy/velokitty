@@ -32,7 +32,9 @@ namespace features::movement {
 
 	std::optional<float> speed_cap_angle( float speed, float step, float air_max_wishspeed, float cap )
 	{
-		if ( cap <= 0.0f || speed < 1.0f || step <= 0.0f )
+		// The small-step algebra below assumes a step well under air_max_wishspeed; past that (very high
+		// sv_airaccelerate) the cap stays out of the way rather than steer from a model that does not apply.
+		if ( cap <= 0.0f || speed < 1.0f || step <= 0.0f || step >= air_max_wishspeed )
 		{
 			return std::nullopt;
 		}
@@ -377,8 +379,13 @@ namespace features::movement {
 					const auto velocity_angle = std::atan2f( velocity.y, velocity.x ) * ( 180.0f / std::numbers::pi_v<float> );
 					const auto accel_speed = sv_airaccelerate * effective_maxspeed * frame_time * surface_friction;
 					const auto half_accel = accel_speed * 0.5f;
-					const auto optimal_floor = std::fmaxf( half_accel, sv_air_max_wishspeed - half_accel );
-					const auto ideal_angle = std::clamp( std::atanf( optimal_floor / speed_2d ) * ( 180.0f / std::numbers::pi_v<float> ), 0.0f, 45.0f );
+					// Measured from the perpendicular. The best wish keeps the velocity's projection on it at
+					// air_max_wishspeed - step when a step is smaller than air_max_wishspeed, and at half of
+					// air_max_wishspeed when it is not. The old max( step, air_max - step ) only matched the first
+					// case: on servers with a high sv_airaccelerate (200 on the HvH server) it put the projection at
+					// the whole air_max_wishspeed, where the game adds nothing -- strafing that never gained speed.
+					const auto projection = half_accel >= sv_air_max_wishspeed ? sv_air_max_wishspeed * 0.5f : sv_air_max_wishspeed - half_accel;
+					const auto ideal_angle = std::clamp( std::asinf( std::clamp( projection / speed_2d, 0.0f, 1.0f ) ) * ( 180.0f / std::numbers::pi_v<float> ), 0.0f, 45.0f );
 
 					auto target_yaw = view_angles.y + yaw_offset;
 					math::helpers::normalize_angle( target_yaw );
