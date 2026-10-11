@@ -367,10 +367,10 @@ namespace features::misc {
 		const auto local = systems::g_local.get( );
 		const auto& cfg = settings::g_misc.m_name_changer;
 
-		// The aimwhere badge marker rides on the name, so the name changer now always runs: even with the clan
-		// tag and override both off, it re-submits your real name with the marker appended. That is the whole
-		// detection channel -- other users read it off your name, nothing is sent anywhere.
-		const auto enabled = true;
+		// With the aimwhere badge on, the marker rides on the name, so the name changer always runs: even with
+		// the clan tag and override both off, it re-submits your real name with the marker appended. With the
+		// badge off it only runs for the clan tag or a custom name, and leaves the name alone otherwise.
+		const auto enabled = k_aimwhere_badge_enabled || cfg.clantag.value || cfg.override_name.value;
 
 		if ( !enabled )
 		{
@@ -431,6 +431,7 @@ namespace features::misc {
 
 		// The aimwhere marker goes last, after the name and any clan tag. Strip either marker first so a
 		// hidden -> visible flip replaces rather than stacks, then append whichever the self-test settled on.
+		if constexpr ( k_aimwhere_badge_enabled )
 		{
 			const auto erase_all = [ &display_name ]( const char* m )
 			{
@@ -470,7 +471,7 @@ namespace features::misc {
 		// constantly, which is why the badge only worked with it on. Every few seconds, check what the server
 		// actually holds for us and resend if the marker is missing.
 		const auto now = std::chrono::steady_clock::now( );
-		if ( !this->m_last_sent_name.empty( ) && now >= this->m_next_marker_check )
+		if ( k_aimwhere_badge_enabled && !this->m_last_sent_name.empty( ) && now >= this->m_next_marker_check )
 		{
 			this->m_next_marker_check = now + std::chrono::seconds( 5 );
 

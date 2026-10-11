@@ -7,7 +7,7 @@ namespace features::movement {
 	struct diagnostics
 	{
 		std::atomic<std::uint32_t> bhop_calls{}, bhop_autobhop_convar{}, bhop_no_jump_key{}, bhop_on_ground{}, bhop_air_jump_held{}, bhop_no_landing{}, bhop_scheduled{}, bhop_retry{};
-		std::atomic<std::uint32_t> airstrafe_calls{}, airstrafe_shift_air{}, airstrafe_off_or_firing{}, airstrafe_ground{}, airstrafe_sprint{}, airstrafe_ran{};
+		std::atomic<std::uint32_t> airstrafe_calls{}, airstrafe_shift_air{}, airstrafe_off_or_firing{}, airstrafe_ground{}, airstrafe_sprint{}, airstrafe_ran{}, airstrafe_braking{};
 		std::atomic<std::uint32_t> strafer_calls{}, strafer_inactive{}, strafer_ground{}, strafer_ran{}, strafer_yield{};
 	};
 

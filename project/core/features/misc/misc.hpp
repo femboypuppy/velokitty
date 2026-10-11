@@ -541,7 +541,12 @@ namespace features::misc {
 	/// is used and no one sees anything. The visible one (U+1D2C U+1D42, a small raised "AW") is the fallback
 	/// for when the sanitiser strips the zero-width run: modifier letters always survive, at the cost of a
 	/// faint mark on the name. do_name_changing self-tests by reading its own name back and picks.
-	inline constexpr const char* k_aimwhere_marker_hidden = "\xE2\x80\x8B\xE2\x80\x8C\xE2\x80\x8B\xE2\x80\x8C";
+	/// Off for now: wearing the marker means changing the name and re-sending it whenever the server drops it,
+	/// and community servers kick for name changes. With this false the name is never touched for the badge and
+	/// nobody's names are scanned for it.
+	inline constexpr bool k_aimwhere_badge_enabled = false;
+
+	inline constexpr const char* k_aimwhere_marker_hidden ="\xE2\x80\x8B\xE2\x80\x8C\xE2\x80\x8B\xE2\x80\x8C";
 	inline constexpr const char* k_aimwhere_marker_visible = "\xE1\xB4\xAC\xE1\xB5\x82";
 
 	/// Set once the self-test finds the hidden marker did not survive; the name changer then wears the visible

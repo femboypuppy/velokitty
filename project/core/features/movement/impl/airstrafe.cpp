@@ -128,7 +128,11 @@ namespace features::movement {
 			return;
 		}
 
-		const auto wants_stop = features::combat::g_rage.should_stop( ) || features::misc::g_projectile_trajectory.should_stop( );
+		// Not the ragebot's should_stop: it is true whenever the ragebot has a target, so on a server full of
+		// visible enemies the strafe spent its air ticks braking instead of strafing -- airstrafe "not working
+		// at all" on HvH. Stopping in the air for a shot is auto stop's job (jump scout), and this already
+		// stands down on the ticks auto stop brakes.
+		const auto wants_stop = features::misc::g_projectile_trajectory.should_stop( );
 		// Auto strafe on a server it cannot steer on (see test_strafer::is_active) strafes this way instead.
 		const auto stands_in_for_strafer = settings::g_movement.m_test_strafer.enabled.value && !features::movement::g_test_strafer.is_active( );
 
@@ -210,7 +214,9 @@ namespace features::movement {
 		const auto effective_maxspeed = memory::read<float>( movement_services + SCHEMA( "CPlayer_MovementServices", "m_flMaxspeed"_hash ) );
 		const auto speed_cap = strafe_speed_cap( );
 
-		constexpr auto subtick_count{ 32 };
+		// 12, not 32: auto strafe stays at 16 per command, and a server that caps subtick moves would drop the
+		// tail of a 32-step chain -- or the command -- instead of strafing.
+		constexpr auto subtick_count{ 12 };
 		constexpr auto frame_time{ cstypes::tick_interval / static_cast< float >( subtick_count ) };
 
 		auto yaw_offset{ 0.0f };
@@ -237,8 +243,19 @@ namespace features::movement {
 			}
 		}
 
-		const auto has_direction_input = ( this->m_last_pressed & cstypes::command_buttons::in_moveleft ) || ( this->m_last_pressed & cstypes::command_buttons::in_moveright ) || ( this->m_last_pressed & cstypes::command_buttons::in_forward ) || ( this->m_last_pressed & cstypes::command_buttons::in_back );
-		const auto effective_wants_stop = wants_stop || ( settings::g_movement.airstrafe_fully_directional.value && !has_direction_input );
+		// Fully directional: the keys pick the strafe direction (W forward, A left, S back...). Off: always toward
+		// the camera. Holding no key strafes toward the camera either way -- it used to brake to a stop with
+		// fully directional on, so holding only space in the air slowed you down.
+		if ( !settings::g_movement.airstrafe_fully_directional.value )
+		{
+			yaw_offset = 0.0f;
+		}
+
+		const auto effective_wants_stop = wants_stop;
+		if ( effective_wants_stop )
+		{
+			g_diag.airstrafe_braking.fetch_add( 1, std::memory_order_relaxed );
+		}
 
 		auto velocity = prestate.networked_velocity;
 		auto last_impulses = prestate.last_movement_impulses;
