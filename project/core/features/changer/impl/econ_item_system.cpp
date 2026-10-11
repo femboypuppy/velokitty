@@ -286,6 +286,22 @@ namespace features::changer {
 			}
 		}
 
+		// The counts above describe the table; this decides whether to trust it. Definition 7 has been the
+		// AK-47 since CS:GO, so if it does not read back as weapon_ak47 the name offset has moved, and a
+		// skin menu built on that table would be junk at best. Refusing it costs the skin changer only.
+		const auto ak47 = std::ranges::find( this->m_item_defs, std::int16_t{ 7 }, &item_def::def_index );
+		const auto anchor_ok = ak47 != this->m_item_defs.end( ) && ak47->name == xs( "weapon_ak47" );
+		const auto named_ok = no_name * 2 < static_cast< int >( this->m_item_defs.size( ) );
+
+		if ( !anchor_ok || !named_ok )
+		{
+			diag::writef( diag::level::warning,
+				"econ: item definitions failed sanity check (def 7 name='%s', %d of %zu blank names); item def offsets need updating",
+				ak47 != this->m_item_defs.end( ) ? ak47->name.c_str( ) : "<missing>", no_name, this->m_item_defs.size( ) );
+			this->m_item_defs.clear( );
+			return false;
+		}
+
 		return !this->m_item_defs.empty( );
 	}
 
@@ -365,7 +381,25 @@ namespace features::changer {
 				pk.id, pk.name, pk.name_token, pk.wear_min, pk.wear_max, pk.rarity );
 		}
 
-		return !this->m_paint_kits.empty( );
+		// Wear is a float in 0..1 with min <= max on every real paint kit. A moved offset reads ids, pointers
+		// or other floats there, which fail this long before they look plausible.
+		auto bad_wear{ 0 };
+		for ( const auto& pk : this->m_paint_kits )
+		{
+			const auto in_range = pk.wear_min >= 0.0f && pk.wear_max <= 1.0f && pk.wear_min <= pk.wear_max;
+			bad_wear += !in_range;
+		}
+
+		if ( this->m_paint_kits.empty( ) || bad_wear * 10 > static_cast< int >( this->m_paint_kits.size( ) ) || no_name * 2 >= static_cast< int >( this->m_paint_kits.size( ) ) )
+		{
+			diag::writef( diag::level::warning,
+				"econ: paint kits failed sanity check (%d of %zu wear ranges outside 0..1, %d blank names); paint kit offsets need updating",
+				bad_wear, this->m_paint_kits.size( ), no_name );
+			this->m_paint_kits.clear( );
+			return false;
+		}
+
+		return true;
 	}
 
 	void econ_item_system::build_indices( )
