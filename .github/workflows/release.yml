@@ -58,6 +58,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path out/cs2.dll)) { throw "build finished but out/cs2.dll is missing" }
 
+      - name: Check fault guards survived the build
+        if: steps.version.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          # Under ClangCL a __try only covers faulting loads with /EHa. Without it safe_read, read_string and
+          # diag::guard compile to nothing and the first stale offset kills init (0.1.9). The two builds are
+          # easy to tell apart: ~3500 functions carry an SEH handler with /EHa, ~350 without.
+          $dumpbin = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -find "VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
+          if (-not $dumpbin) { throw "dumpbin not found" }
+          $handlers = (& $dumpbin /nologo /unwindinfo out/cs2.dll | Select-String 'EHANDLER').Count
+          Write-Host "functions with an SEH handler: $handlers"
+          if ($handlers -lt 1000) { throw "only $handlers functions have SEH handlers; /EHa (ExceptionHandling=Async) is probably off" }
+
       - name: Publish release
         if: steps.version.outputs.exists == 'false'
         shell: pwsh
