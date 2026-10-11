@@ -9,7 +9,9 @@ namespace systems {
 	class schemas
 	{
 	public:
-		[[nodiscard]] static std::uint32_t lookup( const char* class_name, std::uint32_t field_hash );
+		/// `field_source` is the call site's own spelling of the field, e.g. `"m_iHealth"_hash`, kept only so
+		/// a miss can be logged by name instead of by hash.
+		[[nodiscard]] static std::uint32_t lookup( const char* class_name, std::uint32_t field_hash, const char* field_source = nullptr );
 	};
 
 	class materials
@@ -692,6 +694,6 @@ namespace systems {
 
 #define SCHEMA( class_name, field_hash ) \
 	[]( ) -> int { \
-		static const auto val = systems::schemas::lookup( class_name, field_hash ); \
+		static const auto val = systems::schemas::lookup( class_name, field_hash, #field_hash ); \
 		return val; \
 	}( )

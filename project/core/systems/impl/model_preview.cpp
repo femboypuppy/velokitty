@@ -29,9 +29,13 @@ namespace systems
         if ( owner_hash != "C_CSGO_PreviewPlayer"_hash )
             return false;
 
-        const std::uintptr_t mesh_instance = memory::read<std::uintptr_t>(
-            owner_entity + SCHEMA( "C_BaseEntity", "m_pMeshInstance"_hash )
-        );
+        // m_pMeshInstance left C_BaseEntity in the October 9 update. A miss is offset 0, which would read the
+        // entity's vtable as a mesh pointer and chase it twice on the render thread.
+        const auto mesh_offset = SCHEMA( "C_BaseEntity", "m_pMeshInstance"_hash );
+        if ( !mesh_offset )
+            return false;
+
+        const std::uintptr_t mesh_instance = memory::read<std::uintptr_t>( owner_entity + mesh_offset );
 
         if ( mesh_instance )
         {

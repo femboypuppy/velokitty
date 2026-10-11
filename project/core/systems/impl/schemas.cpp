@@ -7,14 +7,18 @@
 
 namespace systems {
 
-	std::uint32_t schemas::lookup( const char* class_name, std::uint32_t field_hash )
+	std::uint32_t schemas::lookup( const char* class_name, std::uint32_t field_hash, const char* field_source )
 	{
 		// A miss is a zero, and a zero is a valid offset -- the caller then reads the object's first eight bytes
 		// as if they were the field. It used to be silent, which is how a field renamed by a game update turned
 		// into a feature that quietly did nothing. Each call site caches its result, so this logs once per site.
+		//
+		// The field is named from the call site's source text: after the October 9 update the log said only
+		// "hash=0xE9EFCFCF", and turning that back into m_angShootAngleHistory took a script.
 		const auto miss = [ & ]( const char* reason )
 		{
-			diag::writef( diag::level::warning, "schema miss: %s hash=0x%08X (%s)", class_name, field_hash, reason );
+			diag::writef( diag::level::warning, "schema miss: %s::%s hash=0x%08X (%s)",
+				class_name, field_source ? field_source : "?", field_hash, reason );
 			return std::uint32_t{ 0 };
 		};
 

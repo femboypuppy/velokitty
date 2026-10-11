@@ -198,9 +198,8 @@ namespace systems {
 		guard.save<math::vector3>( local.pawn + SCHEMA( "C_CSPlayerPawn", "m_angStashedShootAngles"_hash ) );
 		guard.save<math::vector3>( local.pawn + SCHEMA( "C_CSPlayerPawn", "m_vecStashedGrenadeThrowPosition"_hash ) );
 		guard.save<math::vector3>( local.pawn + SCHEMA( "C_CSPlayerPawn", "m_vecStashedVelocity"_hash ) );
-		guard.save_raw( local.pawn + SCHEMA( "C_CSPlayerPawn", "m_angShootAngleHistory"_hash ), sizeof( math::vector3 ) * 2 );
-		guard.save_raw( local.pawn + SCHEMA( "C_CSPlayerPawn", "m_vecThrowPositionHistory"_hash ), sizeof( math::vector3 ) * 2 );
-		guard.save_raw( local.pawn + SCHEMA( "C_CSPlayerPawn", "m_vecVelocityHistory"_hash ), sizeof( math::vector3 ) * 2 );
+		// m_angShootAngleHistory, m_vecThrowPositionHistory and m_vecVelocityHistory left the schema in the
+		// October 9 update. A missed field resolves to offset 0, so saving them only snapshotted the vtable.
 
 		guard.save<math::vector3>( local.pawn + SCHEMA( "C_BaseModelEntity", "m_vecViewOffset"_hash ) );
 
@@ -257,7 +256,6 @@ namespace systems {
 		guard.save<math::vector3>( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_vecUp"_hash ) );
 		guard.save<int>( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_nGameCodeHasMovedPlayerAfterCommand"_hash ) );
 		guard.save<float>( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_fStashGrenadeParameterWhen"_hash ) );
-		guard.save<std::uintptr_t>( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_nButtonDownMaskPrev"_hash ) );
 		guard.save<float>( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_flHeightAtJumpStart"_hash ) );
 		guard.save<float>( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_flMaxJumpHeightThisJump"_hash ) );
 		guard.save<float>( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_flMaxJumpHeightLastJump"_hash ) );
@@ -272,8 +270,8 @@ namespace systems {
 		guard.save<int>( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_nLastJumpTick"_hash ) );
 		guard.save<float>( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_flLastJumpFrac"_hash ) );
 		guard.save<float>( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_flLastJumpVelocityZ"_hash ) );
-		guard.save<float>( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_gtLastTimeOnStaticWorldGround"_hash ) );
-		guard.save<float>( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_gtLastTimeInAir"_hash ) );
+		// m_nButtonDownMaskPrev, m_gtLastTimeOnStaticWorldGround and m_gtLastTimeInAir were removed in the same
+		// update; there is nothing left to save for them.
 		guard.save_raw( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_LegacyJump"_hash ), 24 );
 		guard.save_raw( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_ModernJump"_hash ), 56 );
 		guard.save<bool>( movement_services + SCHEMA( "CCSPlayer_MovementServices", "m_bUseFrictionStashedSpeed"_hash ) );
