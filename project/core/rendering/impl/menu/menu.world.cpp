@@ -6,6 +6,83 @@
 
 namespace rendering {
 
+	namespace {
+
+		/// A full look in one click. Applying one writes straight into the scene and fog settings, so the
+		/// result is saved with the config and every slider stays free to tweak afterwards; there is no
+		/// separate preset state to drift out of sync with what is on screen.
+		struct scene_preset
+		{
+			const char* name{};
+			bool overrides{};
+			int skybox{};
+			xdraw::color sky{};
+			xdraw::color cloud{};
+			xdraw::color sun{};
+			xdraw::color light{};
+			float light_intensity{};
+			xdraw::color world{};
+			float bloom{};
+			float gamma{};
+			bool fog{};
+			float fog_density{};
+			float fog_distance{};
+			xdraw::color fog_color{};
+		};
+
+		// Skybox indices are the fixed built-ins at the head of scene::get_skyboxes: 0 map default,
+		// 11 cloudy, 12 rain night, 13 daylight, 15 sunset. Cloud and sun alpha stay 0 like the shipped
+		// defaults -- the alpha byte goes to the material untouched.
+		constexpr scene_preset k_scene_presets[ ]
+		{
+			{ "map default" },
+			{ "night", true, 12, { 70, 80, 140, 255 }, { 60, 70, 120, 0 }, { 120, 130, 200, 0 }, { 120, 140, 220, 255 }, 0.45f, { 70, 80, 120, 255 }, 1.2f, 2.2f, true, 0.35f, 6000.0f, { 30, 35, 60, 255 } },
+			{ "sunset", true, 15, { 255, 150, 90, 255 }, { 255, 170, 120, 0 }, { 255, 190, 120, 0 }, { 255, 170, 110, 255 }, 0.95f, { 255, 200, 170, 255 }, 1.6f, 2.2f, true, 0.25f, 9000.0f, { 230, 150, 110, 255 } },
+			{ "neon", true, 0, { 249, 103, 206, 255 }, { 173, 192, 255, 0 }, { 173, 192, 255, 0 }, { 200, 120, 255, 255 }, 0.85f, { 150, 120, 255, 255 }, 2.0f, 2.2f, true, 0.30f, 7000.0f, { 120, 60, 200, 255 } },
+			{ "foggy", true, 11, { 180, 185, 195, 255 }, { 200, 200, 205, 0 }, { 220, 220, 225, 0 }, { 200, 205, 215, 255 }, 0.60f, { 190, 195, 205, 255 }, 0.8f, 2.2f, true, 0.80f, 3000.0f, { 175, 180, 190, 255 } },
+			{ "daylight", true, 13, { 255, 255, 255, 255 }, { 255, 255, 255, 0 }, { 255, 250, 235, 0 }, { 255, 250, 240, 255 }, 1.00f, { 255, 255, 255, 255 }, 1.0f, 2.2f, false, 0.0f, 8000.0f, { 160, 175, 210, 255 } },
+		};
+
+		void apply_scene_preset( const scene_preset& preset )
+		{
+			auto& scene = settings::g_world.m_scene;
+			auto& weather = settings::g_world.m_weather;
+
+			scene.skybox.custom_skybox.value = preset.overrides;
+			scene.skybox.custom_color.value = preset.overrides;
+			scene.lighting.value = preset.overrides;
+			scene.world_setting.value = preset.overrides;
+			scene.bloom.value = preset.overrides;
+			scene.gamma.value = preset.overrides;
+			weather.fog_enabled.value = preset.fog;
+
+			// "map default" only switches the overrides off and leaves the values, so going back to a
+			// hand-tuned look is one checkbox away.
+			if ( !preset.overrides )
+			{
+				return;
+			}
+
+			scene.skybox.selected_skybox.value = preset.skybox;
+			scene.skybox.skybox_color.value = preset.sky;
+			scene.skybox.cloud_color.value = preset.cloud;
+			scene.skybox.sun_color.value = preset.sun;
+			scene.lighting_color.value = preset.light;
+			scene.lighting_intensity.value = preset.light_intensity;
+			scene.world_color.value = preset.world;
+			scene.bloom_value.value = preset.bloom;
+			scene.gamma_value.value = preset.gamma;
+
+			if ( preset.fog )
+			{
+				weather.fog_density.value = preset.fog_density;
+				weather.fog_draw_distance.value = preset.fog_distance;
+				weather.fog_color.value = preset.fog_color;
+			}
+		}
+
+	} // namespace
+
 	void menu::draw_world( float group_w ) const
 	{
 		auto& w = settings::g_world;
@@ -211,6 +288,27 @@ namespace rendering {
 		if ( subtab == 1 )
 		{
 			auto& scene = w.m_scene;
+
+			if ( xui::begin_child( "presets##world_scene_presets", col_w ) )
+			{
+				static int preset_index{ 1 };
+
+				std::array<const char*, std::size( k_scene_presets )> names{};
+				for ( std::size_t i = 0; i < names.size( ); ++i )
+				{
+					names[ i ] = k_scene_presets[ i ].name;
+				}
+
+				xui::combo( "look", preset_index, names.data( ), static_cast< int >( names.size( ) ) );
+				preset_index = std::clamp( preset_index, 0, static_cast< int >( names.size( ) ) - 1 );
+
+				if ( xui::button( "apply look", xui::layout::avail( ).first, 26.0f ) )
+				{
+					apply_scene_preset( k_scene_presets[ preset_index ] );
+				}
+
+				xui::end_child( );
+			}
 
 			if ( xui::begin_child( "scene##world_scene_left", col_w ) )
 			{
