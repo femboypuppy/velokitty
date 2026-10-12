@@ -317,28 +317,56 @@ namespace features::world {
 		}
 
 		const auto light_data_base = memory::safe_read<std::uintptr_t> (*light_data_queue + 0x18);
-		if (!light_data_base || !*light_data_base) {
+		const auto light_data_limit = memory::safe_read<std::uintptr_t> (*light_data_queue + 0x8);
+		if (!light_data_base || !*light_data_base || !light_data_limit ||
+			*light_data_limit <= *light_data_base) {
 			return;
 		}
 
 		const auto count = memory::safe_read<int> (*object_data + 0x4);
-		const auto index = memory::safe_read<int> (*object_data + 0x30);
+		// The aggregate builder stores the allocated colour-record index at +0x38. +0x30 is the
+		// submesh-index pointer, whose low bits usually failed the old index check. Aggregate draws
+		// consume these records rather than the primitive tint, so that left most map geometry unchanged.
+		const auto index = memory::safe_read<int> (*object_data + 0x38);
 		if (!count || !index || *count <= 0 || *count > (1 << 20) ||
-			*index < 0 || *index > (1 << 22)) {
+			*index < 0) {
+			return;
+		}
+
+		constexpr auto record_size = std::size_t {0x20};
+		const auto capacity = (*light_data_limit - *light_data_base) / record_size;
+		const auto first = static_cast<std::size_t> (*index);
+		const auto records = static_cast<std::size_t> (*count);
+		if (first > capacity || records > capacity - first) {
+			static std::atomic<bool> warned{};
+			if (!warned.exchange (true)) {
+				diag::writef (diag::level::warning,
+					"world color: aggregate record range out of bounds (index %d, count %d, capacity %zu)",
+					*index, *count, capacity);
+			}
 			return;
 		}
 
 		const auto& configured = settings::g_world.m_scene.world_color.value;
+		auto tinted = 0;
 		for (auto i = 0; i < *count; ++i) {
-			const auto color_addr = *light_data_base +
-				((static_cast<std::size_t> (*index) + i) << 5);
+			const auto color_addr = *light_data_base + ((first + i) * record_size);
 			const auto current = memory::safe_read<xdraw::color> (color_addr);
 			if (!current) {
 				continue;
 			}
 
-			(void) memory::safe_write<xdraw::color> (
-				color_addr, {configured.r, configured.g, configured.b, current->a});
+			if (memory::safe_write<xdraw::color> (
+				color_addr, {configured.r, configured.g, configured.b, current->a})) {
+				++tinted;
+			}
+		}
+
+		static std::atomic<bool> logged{};
+		if (tinted > 0 && !logged.exchange (true)) {
+			diag::writef (diag::level::info,
+				"world color: aggregate color records tinted (first range %d of %d, index %d)",
+				tinted, *count, *index);
 		}
 	}
 
