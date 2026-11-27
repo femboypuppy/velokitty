@@ -386,17 +386,20 @@ namespace memory {
 		}
 
 		const auto first_byte = parsed [first_byte_idx].byte;
-		const auto first_byte_vec = _mm256_set1_epi8 (static_cast<char>(first_byte));
+		// SSE2 on purpose: it is the x64 baseline. The 256-bit AVX2 compare that used to be here is an
+		// illegal instruction on Sandy/Ivy Bridge CPUs (i7-2600 etc.), which killed the DLL before the
+		// first log line and made injectors report a null module.
+		const auto first_byte_vec = _mm_set1_epi8 (static_cast<char>(first_byte));
 
 		const auto module_end = module_base + module_size;
-		const auto scan_end = (module_size >= 32) ? module_size - 32 : 0;
+		const auto scan_end = (module_size >= 16) ? module_size - 16 : 0;
 
 		auto match {0ull};
 
-		for (auto i = 0ull; i <= scan_end; i += 32) {
-			const auto memory_chunk = _mm256_loadu_si256 (reinterpret_cast<const __m256i*>(module_base + i));
-			const auto comparison = _mm256_cmpeq_epi8 (memory_chunk, first_byte_vec);
-			auto mask = _mm256_movemask_epi8 (comparison);
+		for (auto i = 0ull; i <= scan_end; i += 16) {
+			const auto memory_chunk = _mm_loadu_si128 (reinterpret_cast<const __m128i*>(module_base + i));
+			const auto comparison = _mm_cmpeq_epi8 (memory_chunk, first_byte_vec);
+			auto mask = _mm_movemask_epi8 (comparison);
 
 			while (mask != 0) {
 				auto match_offset {0ul};
